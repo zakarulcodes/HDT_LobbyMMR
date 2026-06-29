@@ -1,0 +1,118 @@
+using System.Collections.Generic;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using Hearthstone_Deck_Tracker;
+
+namespace HDT_LobbyMMR
+{
+    /// <summary>A single player row in the lobby-MMR list.</summary>
+    public class PlayerRow
+    {
+        public string Name;
+        public string Mmr;
+        public bool IsSelf;
+
+        public PlayerRow(string name, string mmr, bool isSelf)
+        {
+            Name = name;
+            Mmr = mmr;
+            IsSelf = isSelf;
+        }
+    }
+
+    public partial class LobbyMmrPanel : UserControl
+    {
+        private static readonly Brush NameBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xE3, 0xE3));
+        private static readonly Brush MmrBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        // Gold accent for the local player, matching HDT's highlight tone.
+        private static readonly Brush SelfBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xA4, 0x41));
+        private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
+
+        private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
+
+        public LobbyMmrPanel()
+        {
+            InitializeComponent();
+            Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Scale via RenderTransform from the bottom-left so the panel stays flush
+        /// with the top of the session window at any scale (layout unchanged).
+        /// </summary>
+        public void SetDockedAppearance()
+        {
+            RootBorder.RenderTransformOrigin = new Point(0, 1);
+            RootBorder.RenderTransform = _scale;
+        }
+
+        public void SetScale(double ratio)
+        {
+            _scale.ScaleX = ratio;
+            _scale.ScaleY = ratio;
+        }
+
+        // ---- Content -------------------------------------------------------
+
+        /// <summary>Show a status message (loading / error / idle) and clear the rows.</summary>
+        public void ShowMessage(string text)
+        {
+            RowsPanel.Children.Clear();
+            StatusText.Text = text;
+            StatusText.Visibility = Visibility.Visible;
+            Visibility = Visibility.Visible;
+        }
+
+        /// <summary>Render the lobby player list.</summary>
+        public void ShowRows(IReadOnlyList<PlayerRow> rows)
+        {
+            RowsPanel.Children.Clear();
+            StatusText.Visibility = Visibility.Collapsed;
+
+            foreach (PlayerRow row in rows)
+                RowsPanel.Children.Add(BuildRow(row));
+
+            Visibility = Visibility.Visible;
+        }
+
+        private static Border BuildRow(PlayerRow row)
+        {
+            var grid = new Grid { Margin = new Thickness(8, 2, 8, 2) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            // HearthstoneTextBlock = HDT's outlined Belwe font control, same as the
+            // session window. It uses Fill (not Foreground) for color.
+            var name = new HearthstoneTextBlock
+            {
+                Text = row.Name,
+                Fill = row.IsSelf ? SelfBrush : NameBrush,
+                FontSize = 13,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(name, 0);
+
+            var mmr = new HearthstoneTextBlock
+            {
+                Text = row.Mmr,
+                Fill = row.IsSelf ? SelfBrush : MmrBrush,
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            Grid.SetColumn(mmr, 1);
+
+            grid.Children.Add(name);
+            grid.Children.Add(mmr);
+
+            return new Border
+            {
+                Background = row.IsSelf ? SelfRowBg : Brushes.Transparent,
+                Child = grid
+            };
+        }
+    }
+}
