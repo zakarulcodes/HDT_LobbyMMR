@@ -30,27 +30,41 @@ namespace HDT_LobbyMMR
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
 
         private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
+        // Pulls a bottom-docked panel up to compensate for the layout gap the
+        // session's RenderTransform scaling leaves behind (it keeps its full
+        // unscaled layout slot). Stays 0 when docked to the top.
+        private readonly TranslateTransform _translate = new TranslateTransform(0, 0);
+        private readonly TransformGroup _transform = new TransformGroup();
 
         public LobbyMmrPanel()
         {
             InitializeComponent();
+            _transform.Children.Add(_scale);
+            _transform.Children.Add(_translate);
             Visibility = Visibility.Collapsed;
         }
 
         /// <summary>
-        /// Scale via RenderTransform from the bottom-left so the panel stays flush
-        /// with the top of the session window at any scale (layout unchanged).
+        /// Scale via RenderTransform anchored to the edge that touches the session
+        /// window, so the panel stays flush at any scale (layout unchanged):
+        /// bottom-left (0,1) when docked to the top, top-left (0,0) when docked to
+        /// the bottom (combined with the upward translate set in <see cref="SetScale"/>).
         /// </summary>
-        public void SetDockedAppearance()
+        public void SetDockedAppearance(DockSide side)
         {
-            RootBorder.RenderTransformOrigin = new Point(0, 1);
-            RootBorder.RenderTransform = _scale;
+            RootBorder.RenderTransformOrigin =
+                side == DockSide.Top ? new Point(0, 1) : new Point(0, 0);
+            RootBorder.RenderTransform = _transform;
         }
 
-        public void SetScale(double ratio)
+        /// <param name="ratio">Session scale factor (1.0 = 100%).</param>
+        /// <param name="offsetY">Vertical pixels to shift the panel (negative = up);
+        /// non-zero only for bottom docking, to close the scaling gap.</param>
+        public void SetScale(double ratio, double offsetY)
         {
             _scale.ScaleX = ratio;
             _scale.ScaleY = ratio;
+            _translate.Y = offsetY;
         }
 
         // ---- Content -------------------------------------------------------

@@ -12,10 +12,13 @@ using Hearthstone_Deck_Tracker.Enums;
 
 namespace HDT_LobbyMMR
 {
+    /// <summary>Which edge of the Battlegrounds Session window the panel docks to.</summary>
+    public enum DockSide { Top, Bottom }
+
     /// <summary>
     /// Core logic: reads the Battlegrounds lobby players, resolves their MMR from
     /// the BGrank leaderboard service, and renders them in a panel docked to the top
-    /// of HDT's Battlegrounds Session window.
+    /// or bottom of HDT's Battlegrounds Session window.
     ///
     /// The leaderboard data flow is adapted from IBM5100's HDT_BGrank
     /// (https://github.com/IBM5100o/HDT_BGrank).
@@ -28,6 +31,8 @@ namespace HDT_LobbyMMR
         private bool _leaderBoardReady = false;
         private int _nameErrors = 0;
         private bool _docked = false;
+        private DockSide _dockSide = DockSide.Top;
+        private DockSide? _dockedAt = null;
 
         private string _myName;
         private List<string> _lobbyNames;
@@ -59,8 +64,18 @@ namespace HDT_LobbyMMR
         // ---- Docking to the Battlegrounds Session window --------------------
 
         /// <summary>
-        /// Insert the panel as the top child of HDT's BattlegroundsSessionStackPanel
-        /// so it sits flush above the session window and follows it automatically.
+        /// Choose which edge of the session window the panel docks to. The move is
+        /// applied on the next update tick by <see cref="EnsureDocked"/>.
+        /// </summary>
+        public void SetDockSide(DockSide side)
+        {
+            _dockSide = side;
+        }
+
+        /// <summary>
+        /// Insert the panel as the first (top) or last (bottom) child of HDT's
+        /// BattlegroundsSessionStackPanel so it sits flush against the session window
+        /// and follows it automatically. Re-docks if the chosen side has changed.
         /// </summary>
         private void EnsureDocked()
         {
@@ -71,14 +86,20 @@ namespace HDT_LobbyMMR
             if (stack == null)
                 return; // overlay not built yet; retry next tick
 
-            if (!ReferenceEquals(_panel.Parent, stack))
-            {
-                if (_panel.Parent is Panel op) op.Children.Remove(_panel);
-                stack.Children.Insert(0, _panel);
-                _panel.SetDockedAppearance();
-                _docked = true;
-                FileLogger.Instance.Info("Docked to session window");
-            }
+            bool wrongParent = !ReferenceEquals(_panel.Parent, stack);
+            bool wrongSide = _dockedAt != _dockSide;
+            if (!wrongParent && !wrongSide)
+                return;
+
+            if (_panel.Parent is Panel op) op.Children.Remove(_panel);
+            if (_dockSide == DockSide.Top)
+                stack.Children.Insert(0, _panel);   // flush above the session
+            else
+                stack.Children.Add(_panel);         // flush below the session
+            _panel.SetDockedAppearance(_dockSide);
+            _dockedAt = _dockSide;
+            _docked = true;
+            FileLogger.Instance.Info($"Docked to {_dockSide.ToString().ToLower()} of session window");
         }
 
         private void Undock()
@@ -86,6 +107,7 @@ namespace HDT_LobbyMMR
             if (_panel?.Parent is Panel parent)
                 parent.Children.Remove(_panel);
             _docked = false;
+            _dockedAt = null;
         }
 
         /// <summary>
@@ -101,7 +123,26 @@ namespace HDT_LobbyMMR
             try { ratio = Config.Instance.OverlaySessionRecapScaling / 100.0; }
             catch { /* keep default */ }
             if (ratio <= 0) ratio = 1.0;
-            _panel.SetScale(ratio);
+
+            // When docked below the session, the session content scales from its
+            // top-left but keeps its full unscaled layout slot, leaving a gap below
+            // it. Pull the panel up by that gap (sum of the heights stacked above us
+            // times the scale shrinkage) so it stays flush with the visible bottom.
+            double offsetY = 0;
+            if (_dockSide == DockSide.Bottom)
+            {
+                Panel stack = GetSessionStackPanel();
+                if (stack != null)
+                {
+                    int idx = stack.Children.IndexOf(_panel);
+                    double above = 0;
+                    for (int i = 0; i < idx; i++)
+                        if (stack.Children[i] is FrameworkElement fe)
+                            above += fe.ActualHeight;
+                    offsetY = -above * (1 - ratio);
+                }
+            }
+            _panel.SetScale(ratio, offsetY);
         }
 
         private static Panel GetSessionStackPanel()
