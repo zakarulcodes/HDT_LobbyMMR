@@ -273,57 +273,17 @@ namespace HDT_LobbyMMR
             }
 
             _leaderBoard = new Dictionary<string, string>();
-            string path, url;
-            int numTries = 0;
-            const int maxTries = 3;
+            bool duo = !Core.Game.IsBattlegroundsSoloMatch;
+            string path = Path.Combine(Config.AppDataPath, "LobbyMMR",
+                duo ? $"LeaderBoard_{region}_duo.txt" : $"LeaderBoard_{region}.txt");
 
-            if (Core.Game.IsBattlegroundsSoloMatch)
+            // Try each source in order until one yields data: our self-hosted
+            // cache (US/EU/AP), then the original bgrank service as a backstop.
+            foreach (string url in GetLeaderBoardUrls(region, duo))
             {
-                path = Path.Combine(Config.AppDataPath, "LobbyMMR", $"LeaderBoard_{region}.txt");
-                url = $"https://bgrank.fly.dev/{region}/";
-            }
-            else
-            {
-                path = Path.Combine(Config.AppDataPath, "LobbyMMR", $"LeaderBoard_{region}_duo.txt");
-                url = $"https://bgrank.fly.dev/{region}_duo/";
-            }
-
-            while (numTries < maxTries && !_leaderBoardReady)
-            {
-                numTries++;
-                try
-                {
-                    FileLogger.Instance.Info($"Fetching leaderboard from {url} (try {numTries}/{maxTries})");
-                    string response = await _client.GetStringAsync(url);
-                    if (string.IsNullOrWhiteSpace(response))
-                    {
-                        if (numTries < maxTries) { await Task.Delay(5000); }
-                        continue;
-                    }
-
-                    string[] lines = response.Split(new[] { "\n<br />" }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (string line in lines)
-                    {
-                        string[] tmp = line.Split(' ');
-                        if (tmp.Length == 2)
-                        {
-                            string name = tmp[0];
-                            string rating = tmp[1];
-                            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(rating)) { continue; }
-                            if (!_leaderBoard.ContainsKey(name)) { _leaderBoard.Add(name, rating); }
-                        }
-                    }
-                    if (_leaderBoard.Count != 0)
-                    {
-                        FileLogger.Instance.Info($"Loaded {_leaderBoard.Count} leaderboard entries from {url}");
-                        _leaderBoardReady = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    FileLogger.Instance.Error($"Failed to fetch leaderboard from {url}", ex);
-                    if (numTries < maxTries) { await Task.Delay(5000); }
-                }
+                if (_leaderBoardReady)
+                    break;
+                await TryFetchLeaderBoard(url);
             }
 
             if (_leaderBoardReady)
@@ -372,6 +332,67 @@ namespace HDT_LobbyMMR
             {
                 FileLogger.Instance.Warn("No local cache available");
                 _failToGetData = true;
+            }
+        }
+
+        /// <summary>
+        /// Ordered leaderboard sources to try for a region/mode. US/EU/AP are
+        /// served from our self-hosted cache first, then the original bgrank
+        /// service. CN is sourced only from bgrank (we don't scrape the separate,
+        /// season-bound CN API), so it keeps its original behaviour.
+        /// </summary>
+        private IEnumerable<string> GetLeaderBoardUrls(string region, bool duo)
+        {
+            string mode = duo ? "_duo" : "";
+            if (region != "CN")
+                yield return $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{region}{mode}.txt";
+            yield return $"https://bgrank.fly.dev/{region}{mode}/";
+        }
+
+        /// <summary>
+        /// Fetch and parse one leaderboard source into <see cref="_leaderBoard"/>,
+        /// retrying transient failures. Sets <see cref="_leaderBoardReady"/> on
+        /// success so the caller stops trying further sources. Both our cache and
+        /// bgrank share the same "name rating" / "\n&lt;br /&gt;" format.
+        /// </summary>
+        private async Task TryFetchLeaderBoard(string url)
+        {
+            const int maxTries = 2;
+            for (int numTries = 1; numTries <= maxTries && !_leaderBoardReady; numTries++)
+            {
+                try
+                {
+                    FileLogger.Instance.Info($"Fetching leaderboard from {url} (try {numTries}/{maxTries})");
+                    string response = await _client.GetStringAsync(url);
+                    if (string.IsNullOrWhiteSpace(response))
+                    {
+                        if (numTries < maxTries) { await Task.Delay(3000); }
+                        continue;
+                    }
+
+                    string[] lines = response.Split(new[] { "\n<br />" }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string line in lines)
+                    {
+                        string[] tmp = line.Split(' ');
+                        if (tmp.Length == 2)
+                        {
+                            string name = tmp[0];
+                            string rating = tmp[1];
+                            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(rating)) { continue; }
+                            if (!_leaderBoard.ContainsKey(name)) { _leaderBoard.Add(name, rating); }
+                        }
+                    }
+                    if (_leaderBoard.Count != 0)
+                    {
+                        FileLogger.Instance.Info($"Loaded {_leaderBoard.Count} leaderboard entries from {url}");
+                        _leaderBoardReady = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Instance.Error($"Failed to fetch leaderboard from {url}", ex);
+                    if (numTries < maxTries) { await Task.Delay(3000); }
+                }
             }
         }
 
