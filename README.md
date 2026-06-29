@@ -33,9 +33,11 @@ in the game.
 
 You can choose where the list sits, and it remembers your choice:
 
-- Open the **Lobby MMR** menu and pick **Dock to top** or **Dock to bottom**, **or**
+- Open the **Plugins → Lobby MMR** menu and pick **Dock to top** or **Dock to bottom**, **or**
 - In **Options → Tracker → Plugins**, select the plugin and click the
   **Toggle dock: top / bottom** button.
+
+![The Plugins menu showing the Dock to top and Dock to bottom options](docs/menu.png)
 
 ## Credit
 
