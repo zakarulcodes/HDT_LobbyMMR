@@ -8,8 +8,10 @@
     <AssemblyName>HDT_LobbyMMR</AssemblyName>
     <!-- We manage references explicitly; keep build output clean. -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <Deterministic>true</Deterministic>
+    <!-- Keep in sync with IPlugin.Version in LobbyMmrPlugin.cs so the built DLL
+         self-identifies (HDT itself reads the version from IPlugin.Version). -->
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,9 @@
 *.user
 *.suo
 
+# Packaged release artifacts
+release/
+
 # Proprietary HDT reference assemblies — copy from your HDT install (see README)
 HDT_LobbyMMR/Reference/*.exe
 HDT_LobbyMMR/Reference/*.dll
