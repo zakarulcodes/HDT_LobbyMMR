@@ -1,0 +1,17 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+
+# Proprietary HDT reference assemblies — copy from your HDT install (see README)
+HDT_LobbyMMR/Reference/*.exe
+HDT_LobbyMMR/Reference/*.dll
+
+# Claude Code / editor local settings
+.claude/
+.vs/
+
+# OS
+Thumbs.db
+.DS_Store

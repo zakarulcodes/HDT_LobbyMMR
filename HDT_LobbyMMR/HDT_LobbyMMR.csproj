@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>HDT_LobbyMMR</RootNamespace>
+    <AssemblyName>HDT_LobbyMMR</AssemblyName>
+    <!-- We manage references explicitly; keep build output clean. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- HDT itself. Private=False: HDT loads our DLL into its own AppDomain, so we
+         must NOT ship a copy of the tracker. -->
+    <Reference Include="HearthstoneDeckTracker">
+      <HintPath>Reference\HearthstoneDeckTracker.exe</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- UnitySpy memory reader. HDT already ships this DLL next to itself, so we
+         reference it for compilation only and do not copy it to the plugins folder. -->
+    <Reference Include="untapped-scry-dotnet">
+      <HintPath>Reference\untapped-scry-dotnet.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- Needed for the C# 'dynamic' calls used when traversing game memory. -->
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+</Project>

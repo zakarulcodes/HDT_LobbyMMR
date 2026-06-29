@@ -1,0 +1,46 @@
+<UserControl x:Class="HDT_LobbyMMR.LobbyMmrPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:hdt="clr-namespace:Hearthstone_Deck_Tracker;assembly=HearthstoneDeckTracker"
+             mc:Ignorable="d">
+    <!-- Colors taken from HDT's BattlegroundsSession.xaml so this matches the
+         native session window: body #2E3235, border #4A5256, header #1C2022.
+         The scale transform is assigned in code (LayoutTransform when free so the
+         host window sizes to it; RenderTransform when docked so it stays flush). -->
+    <Border x:Name="RootBorder"
+            Width="240"
+            Background="#2E3235"
+            BorderBrush="#4A5256"
+            BorderThickness="1"
+            CornerRadius="3"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top">
+        <StackPanel>
+            <!-- Header bar -->
+            <Border Background="#1C2022" BorderBrush="#4A5256" BorderThickness="0,0,0,1">
+                <hdt:HearthstoneTextBlock x:Name="HeaderText"
+                           Text="LOBBY MMR"
+                           Fill="#FFFFFFFF"
+                           FontSize="13"
+                           HorizontalAlignment="Center"
+                           Margin="0,6"/>
+            </Border>
+
+            <!-- Status line (shown while loading / on error / idle) -->
+            <TextBlock x:Name="StatusText"
+                       Text="Waiting for lobby…"
+                       Foreground="#FFFFFFFF"
+                       Opacity="0.55"
+                       FontSize="11"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="8,8"
+                       Visibility="Visible"/>
+
+            <!-- Player rows are added here in code-behind -->
+            <StackPanel x:Name="RowsPanel" Margin="0,2,0,4"/>
+        </StackPanel>
+    </Border>
+</UserControl>
