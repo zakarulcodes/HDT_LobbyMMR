@@ -24,7 +24,7 @@ in the game.
 2. Close Hearthstone Deck Tracker.
 3. Unzip it and put `HDT_LobbyMMR.dll` into this folder (create it if it isn't there):
    ```
-   %AppData%\HearthstoneDeckTracker\Plugins\HDT_LobbyMMR\
+   %AppData%\HearthstoneDeckTracker\Plugins\
    ```
 4. Open Hearthstone Deck Tracker again, go to **Options → Tracker → Plugins**, and
    turn on **Lobby MMR**.
