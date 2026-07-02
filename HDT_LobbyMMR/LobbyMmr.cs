@@ -41,6 +41,10 @@ namespace HDT_LobbyMMR
         // Rank is each player's 1-based position on the region leaderboard (all
         // sources list entries in rank order, so it's the entry's index).
         private Dictionary<string, (string Rating, int Rank)> _leaderBoard;
+        // Name -> channel URL (Twitch preferred, else YouTube) for known streamers.
+        // Best-effort: a missed/failed fetch just means no icons are shown, it never
+        // blocks or fails the core MMR feature.
+        private Dictionary<string, string> _streamers;
 
         private Mirror _mirror;
         private HttpClient _client;
@@ -187,6 +191,7 @@ namespace HDT_LobbyMMR
                 _isReset = false;
                 _panel?.ShowMessage("Reading lobby…");
                 _ = GetLeaderBoard();
+                _ = GetStreamers();
             }
 
             if (_done || Core.Game.GetTurnNumber() == 0)
@@ -227,6 +232,7 @@ namespace HDT_LobbyMMR
             _myName = null;
             _lobbyTeams = null;
             _leaderBoard = null;
+            _streamers = null;
             _mirror?.Clean();
         }
 
@@ -256,7 +262,7 @@ namespace HDT_LobbyMMR
             // Highest MMR at the top; unknown (0) sinks to the bottom.
             var rows = withMmr
                 .OrderByDescending(x => x.Mmr)
-                .Select(x => new PlayerRow(x.Name, FormatMmr(x.Mmr, region), FormatRank(x.Rank), x.IsSelf))
+                .Select(x => new PlayerRow(x.Name, FormatMmr(x.Mmr, region), FormatRank(x.Rank), x.IsSelf, LookupStreamUrl(x.Name)))
                 .ToList();
 
             _panel?.ShowRows(rows);
@@ -287,7 +293,7 @@ namespace HDT_LobbyMMR
                 int maxMmr = members.Count > 0 ? members[0].Mmr : 0;
                 bool hasSelf = members.Any(m => m.IsSelf);
                 var rows = members
-                    .Select(m => new PlayerRow(m.Name, FormatMmr(m.Mmr, region), FormatRank(m.Rank), m.IsSelf))
+                    .Select(m => new PlayerRow(m.Name, FormatMmr(m.Mmr, region), FormatRank(m.Rank), m.IsSelf, LookupStreamUrl(m.Name)))
                     .ToList();
 
                 teams.Add((maxMmr, hasSelf, rows));
@@ -318,6 +324,9 @@ namespace HDT_LobbyMMR
             mmr == 0 ? (region == "CN" ? "-" : "8000↓") : mmr.ToString();
 
         private static string FormatRank(int rank) => rank > 0 ? $"#{rank}" : "";
+
+        private string LookupStreamUrl(string name) =>
+            _streamers != null && _streamers.TryGetValue(name, out string url) ? url : null;
 
         // ---- Leaderboard fetch (adapted from HDT_BGrank) --------------------
 
@@ -460,6 +469,61 @@ namespace HDT_LobbyMMR
                     if (numTries < maxTries) { await Task.Delay(3000); }
                 }
             }
+        }
+
+        // ---- Streamer data fetch --------------------------------------------
+
+        private const string StreamersUrl = "https://zakarulcodes.github.io/hdt-lobbymmr-streamers/streamers.txt";
+
+        /// <summary>
+        /// Best-effort fetch of the known-streamer list (see hdt-lobbymmr-streamers
+        /// repo). Failures are logged and swallowed — a missing streamer icon is
+        /// never worth failing the core MMR feature over.
+        /// </summary>
+        private async Task GetStreamers()
+        {
+            string path = Path.Combine(Config.AppDataPath, "LobbyMMR", "Streamers.txt");
+            string response = null;
+            try
+            {
+                response = await _client.GetStringAsync(StreamersUrl);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Warn($"Failed to fetch streamer data: {ex.Message}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(response))
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllText(path, response);
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Instance.Error("Failed to cache streamer data locally", ex);
+                }
+            }
+            else if (File.Exists(path))
+            {
+                try { response = File.ReadAllText(path); }
+                catch (Exception ex) { FileLogger.Instance.Error("Failed to read cached streamer data", ex); }
+            }
+
+            if (string.IsNullOrWhiteSpace(response))
+                return;
+
+            var streamers = new Dictionary<string, string>();
+            foreach (string line in response.Split(new[] { "\n<br />" }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string[] tmp = line.Split(' ');
+                if (tmp.Length != 3) continue;
+                string url = tmp[1] != "-" ? tmp[1] : (tmp[2] != "-" ? tmp[2] : null);
+                if (url != null) streamers[tmp[0]] = url;
+            }
+            _streamers = streamers;
+            FileLogger.Instance.Info($"Loaded {_streamers.Count} known streamers");
         }
 
         private string GetRegionStr()

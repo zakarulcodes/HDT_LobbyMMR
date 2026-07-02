@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using Hearthstone_Deck_Tracker;
 
 namespace HDT_LobbyMMR
@@ -14,13 +15,16 @@ namespace HDT_LobbyMMR
         /// <summary>Leaderboard rank display text (e.g. "#42"), or "" if unranked.</summary>
         public string Rank;
         public bool IsSelf;
+        /// <summary>Twitch/YouTube channel URL if this player is a known streamer, else null.</summary>
+        public string StreamUrl;
 
-        public PlayerRow(string name, string mmr, string rank, bool isSelf)
+        public PlayerRow(string name, string mmr, string rank, bool isSelf, string streamUrl = null)
         {
             Name = name;
             Mmr = mmr;
             Rank = rank;
             IsSelf = isSelf;
+            StreamUrl = streamUrl;
         }
     }
 
@@ -34,6 +38,8 @@ namespace HDT_LobbyMMR
         // Gold accent for the local player, matching HDT's highlight tone.
         private static readonly Brush SelfBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xA4, 0x41));
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
+        // Twitch brand purple, used as a plain "known streamer" marker dot.
+        private static readonly Brush StreamerBrush = new SolidColorBrush(Color.FromRgb(0x91, 0x46, 0xFF));
 
         private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
         // Pulls a bottom-docked panel up to compensate for the layout gap the
@@ -138,9 +144,10 @@ namespace HDT_LobbyMMR
         private static Border BuildRow(PlayerRow row)
         {
             var grid = new Grid { Margin = new Thickness(8, 2, 8, 2) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // rank
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // streamer dot
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // mmr
 
             // HearthstoneTextBlock = HDT's outlined Belwe font control, same as the
             // session window. It uses Fill (not Foreground) for color.
@@ -173,11 +180,26 @@ namespace HDT_LobbyMMR
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            Grid.SetColumn(mmr, 2);
+            Grid.SetColumn(mmr, 3);
 
             grid.Children.Add(rank);
             grid.Children.Add(name);
             grid.Children.Add(mmr);
+
+            if (row.StreamUrl != null)
+            {
+                var streamerDot = new Ellipse
+                {
+                    Width = 7,
+                    Height = 7,
+                    Fill = StreamerBrush,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = $"Known streamer: {row.StreamUrl}"
+                };
+                Grid.SetColumn(streamerDot, 2);
+                grid.Children.Add(streamerDot);
+            }
 
             return new Border
             {
