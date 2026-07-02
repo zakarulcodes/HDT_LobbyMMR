@@ -33,6 +33,8 @@ namespace HDT_LobbyMMR
         private bool _docked = false;
         private DockSide _dockSide = DockSide.Top;
         private DockSide? _dockedAt = null;
+        private bool _showStreamerIcon = true;
+        private bool _showRank = true;
 
         private string _myName;
         // One inner list per lobby team (size 1 in solo, 2 in duo), in the game's
@@ -78,6 +80,18 @@ namespace HDT_LobbyMMR
         public void SetDockSide(DockSide side)
         {
             _dockSide = side;
+        }
+
+        /// <summary>Show/hide the red "known streamer" dot next to player names.</summary>
+        public void SetShowStreamerIcon(bool show)
+        {
+            _showStreamerIcon = show;
+        }
+
+        /// <summary>Show/hide each player's leaderboard rank position (e.g. "#42").</summary>
+        public void SetShowRank(bool show)
+        {
+            _showRank = show;
         }
 
         /// <summary>
@@ -262,7 +276,11 @@ namespace HDT_LobbyMMR
             // Highest MMR at the top; unknown (0) sinks to the bottom.
             var rows = withMmr
                 .OrderByDescending(x => x.Mmr)
-                .Select(x => new PlayerRow(x.Name, FormatMmr(x.Mmr, region), FormatRank(x.Rank), x.IsSelf, LookupStreamUrl(x.Name)))
+                .Select(x => new PlayerRow(
+                    x.Name, FormatMmr(x.Mmr, region),
+                    _showRank ? FormatRank(x.Rank) : "",
+                    x.IsSelf,
+                    _showStreamerIcon ? LookupStreamUrl(x.Name) : null))
                 .ToList();
 
             _panel?.ShowRows(rows);
@@ -293,7 +311,11 @@ namespace HDT_LobbyMMR
                 int maxMmr = members.Count > 0 ? members[0].Mmr : 0;
                 bool hasSelf = members.Any(m => m.IsSelf);
                 var rows = members
-                    .Select(m => new PlayerRow(m.Name, FormatMmr(m.Mmr, region), FormatRank(m.Rank), m.IsSelf, LookupStreamUrl(m.Name)))
+                    .Select(m => new PlayerRow(
+                        m.Name, FormatMmr(m.Mmr, region),
+                        _showRank ? FormatRank(m.Rank) : "",
+                        m.IsSelf,
+                        _showStreamerIcon ? LookupStreamUrl(m.Name) : null))
                     .ToList();
 
                 teams.Add((maxMmr, hasSelf, rows));

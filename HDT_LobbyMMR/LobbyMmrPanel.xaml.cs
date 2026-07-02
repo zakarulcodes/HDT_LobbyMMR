@@ -38,8 +38,8 @@ namespace HDT_LobbyMMR
         // Gold accent for the local player, matching HDT's highlight tone.
         private static readonly Brush SelfBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xA4, 0x41));
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
-        // Twitch brand purple, used as a plain "known streamer" marker dot.
-        private static readonly Brush StreamerBrush = new SolidColorBrush(Color.FromRgb(0x91, 0x46, 0xFF));
+        // "Known streamer" marker dot.
+        private static readonly Brush StreamerBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x4B, 0x4A));
 
         private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
         // Pulls a bottom-docked panel up to compensate for the layout gap the
@@ -145,8 +145,7 @@ namespace HDT_LobbyMMR
         {
             var grid = new Grid { Margin = new Thickness(8, 2, 8, 2) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // rank
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // streamer dot
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name (+ streamer dot)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // mmr
 
             // HearthstoneTextBlock = HDT's outlined Belwe font control, same as the
@@ -167,10 +166,24 @@ namespace HDT_LobbyMMR
                 Fill = row.IsSelf ? SelfBrush : NameBrush,
                 FontSize = 13,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0)
+                VerticalAlignment = VerticalAlignment.Center
             };
-            Grid.SetColumn(name, 1);
+
+            var nameGroup = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 8, 0) };
+            nameGroup.Children.Add(name);
+            if (row.StreamUrl != null)
+            {
+                nameGroup.Children.Add(new Ellipse
+                {
+                    Width = 7,
+                    Height = 7,
+                    Fill = StreamerBrush,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(4, 0, 0, 0),
+                    ToolTip = $"Known streamer: {row.StreamUrl}"
+                });
+            }
+            Grid.SetColumn(nameGroup, 1);
 
             var mmr = new HearthstoneTextBlock
             {
@@ -180,26 +193,11 @@ namespace HDT_LobbyMMR
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            Grid.SetColumn(mmr, 3);
+            Grid.SetColumn(mmr, 2);
 
             grid.Children.Add(rank);
-            grid.Children.Add(name);
+            grid.Children.Add(nameGroup);
             grid.Children.Add(mmr);
-
-            if (row.StreamUrl != null)
-            {
-                var streamerDot = new Ellipse
-                {
-                    Width = 7,
-                    Height = 7,
-                    Fill = StreamerBrush,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 6, 0),
-                    ToolTip = $"Known streamer: {row.StreamUrl}"
-                };
-                Grid.SetColumn(streamerDot, 2);
-                grid.Children.Add(streamerDot);
-            }
 
             return new Border
             {

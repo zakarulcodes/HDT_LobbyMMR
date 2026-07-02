@@ -20,6 +20,10 @@ namespace HDT_LobbyMMR
         private DockSide _dockSide = DockSide.Top;
         private MenuItem _dockTopItem;
         private MenuItem _dockBottomItem;
+        private bool _showStreamerIcon = true;
+        private bool _showRank = true;
+        private MenuItem _showStreamerIconItem;
+        private MenuItem _showRankItem;
 
         public string Name => "HDT_LobbyMMR";
         public string Description => "Shows the MMR of every player in the Battlegrounds lobby, docked to the top or bottom of the Battlegrounds Session window.";
@@ -96,6 +100,42 @@ namespace HDT_LobbyMMR
             _dockBottomItem.Click += (sender, args) => SetDockSide(DockSide.Bottom);
             MenuItem.Items.Add(_dockTopItem);
             MenuItem.Items.Add(_dockBottomItem);
+
+            MenuItem.Items.Add(new Separator());
+
+            _showStreamerIcon = LoadBoolSetting("showstreamericon.txt", defaultValue: true);
+            _showStreamerIconItem = new MenuItem
+            {
+                Header = "Show streamer icon",
+                IsCheckable = true,
+                IsChecked = _showStreamerIcon
+            };
+            _showStreamerIconItem.Click += (sender, args) => SetShowStreamerIcon(_showStreamerIconItem.IsChecked);
+            MenuItem.Items.Add(_showStreamerIconItem);
+
+            _showRank = LoadBoolSetting("showrank.txt", defaultValue: true);
+            _showRankItem = new MenuItem
+            {
+                Header = "Show rank position",
+                IsCheckable = true,
+                IsChecked = _showRank
+            };
+            _showRankItem.Click += (sender, args) => SetShowRank(_showRankItem.IsChecked);
+            MenuItem.Items.Add(_showRankItem);
+        }
+
+        private void SetShowStreamerIcon(bool show)
+        {
+            _showStreamerIcon = show;
+            SaveBoolSetting("showstreamericon.txt", show);
+            _engine?.SetShowStreamerIcon(show);
+        }
+
+        private void SetShowRank(bool show)
+        {
+            _showRank = show;
+            SaveBoolSetting("showrank.txt", show);
+            _engine?.SetShowRank(show);
         }
 
         private void SetDockSide(DockSide side)
@@ -112,6 +152,8 @@ namespace HDT_LobbyMMR
         {
             _engine ??= new LobbyMmr();
             _engine.SetDockSide(_dockSide);
+            _engine.SetShowStreamerIcon(_showStreamerIcon);
+            _engine.SetShowRank(_showRank);
         }
 
         // ---- Dock-side preference persistence -------------------------------
@@ -146,6 +188,37 @@ namespace HDT_LobbyMMR
             catch (Exception ex)
             {
                 FileLogger.Instance.Error("Failed to save dock side", ex);
+            }
+        }
+
+        // ---- Show/hide toggle persistence ------------------------------------
+
+        private static bool LoadBoolSetting(string fileName, bool defaultValue)
+        {
+            try
+            {
+                string path = Path.Combine(Config.AppDataPath, "LobbyMMR", fileName);
+                if (File.Exists(path))
+                    return File.ReadAllText(path).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Error($"Failed to load setting {fileName}", ex);
+            }
+            return defaultValue;
+        }
+
+        private static void SaveBoolSetting(string fileName, bool value)
+        {
+            try
+            {
+                string path = Path.Combine(Config.AppDataPath, "LobbyMMR", fileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, value ? "true" : "false");
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Error($"Failed to save setting {fileName}", ex);
             }
         }
 
