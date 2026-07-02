@@ -35,7 +35,9 @@ namespace HDT_LobbyMMR
         private DockSide? _dockedAt = null;
 
         private string _myName;
-        private List<string> _lobbyNames;
+        // One inner list per lobby team (size 1 in solo, 2 in duo), in the game's
+        // own team order — preserved so duo rows can be grouped by teammate.
+        private List<List<string>> _lobbyTeams;
         // Rank is each player's 1-based position on the region leaderboard (all
         // sources list entries in rank order, so it's the entry's index).
         private Dictionary<string, (string Rating, int Rank)> _leaderBoard;
@@ -223,7 +225,7 @@ namespace HDT_LobbyMMR
         private void ClearMemory()
         {
             _myName = null;
-            _lobbyNames = null;
+            _lobbyTeams = null;
             _leaderBoard = null;
             _mirror?.Clean();
         }
@@ -233,40 +235,89 @@ namespace HDT_LobbyMMR
         private void RenderRows()
         {
             string region = GetRegionStr();
-            var withMmr = new List<(string Name, int Mmr, int Rank, bool IsSelf)>();
+            if (!Core.Game.IsBattlegroundsSoloMatch)
+                RenderGroupedRows(region);
+            else
+                RenderFlatRows(region);
+        }
 
-            foreach (string name in _lobbyNames)
-            {
-                bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
-                int mmr = 0;
-                int rank = 0;
-                if (_leaderBoard != null && _leaderBoard.TryGetValue(name, out var entry))
+        /// <summary>Solo lobby: every player in one flat list, highest MMR first.</summary>
+        private void RenderFlatRows(string region)
+        {
+            var withMmr = new List<(string Name, int Mmr, int Rank, bool IsSelf)>();
+            foreach (List<string> team in _lobbyTeams)
+                foreach (string name in team)
                 {
-                    if (!int.TryParse(entry.Rating, out mmr))
-                    {
-                        FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{entry.Rating}'");
-                        mmr = 0;
-                    }
-                    else
-                    {
-                        rank = entry.Rank;
-                    }
+                    bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
+                    (int mmr, int rank) = LookupMmrRank(name);
+                    withMmr.Add((name, mmr, rank, isSelf));
                 }
-                withMmr.Add((name, mmr, rank, isSelf));
-            }
 
             // Highest MMR at the top; unknown (0) sinks to the bottom.
             var rows = withMmr
                 .OrderByDescending(x => x.Mmr)
-                .Select(x => new PlayerRow(
-                    x.Name,
-                    x.Mmr == 0 ? (region == "CN" ? "-" : "8000↓") : x.Mmr.ToString(),
-                    x.Rank > 0 ? $"#{x.Rank}" : "",
-                    x.IsSelf))
+                .Select(x => new PlayerRow(x.Name, FormatMmr(x.Mmr, region), FormatRank(x.Rank), x.IsSelf))
                 .ToList();
 
             _panel?.ShowRows(rows);
         }
+
+        /// <summary>
+        /// Duo lobby: players grouped by teammate pair, each still showing their
+        /// own individual MMR/rank (no averaging). Within a team the higher-MMR
+        /// teammate is listed first; teams are ordered by their higher-MMR member
+        /// so the strongest team sits at the top of the panel.
+        /// </summary>
+        private void RenderGroupedRows(string region)
+        {
+            var teams = new List<(int MaxMmr, bool HasSelf, List<PlayerRow> Rows)>();
+
+            foreach (List<string> team in _lobbyTeams)
+            {
+                var members = team
+                    .Select(name =>
+                    {
+                        bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
+                        (int mmr, int rank) = LookupMmrRank(name);
+                        return (Name: name, Mmr: mmr, Rank: rank, IsSelf: isSelf);
+                    })
+                    .OrderByDescending(m => m.Mmr) // higher-MMR teammate first
+                    .ToList();
+
+                int maxMmr = members.Count > 0 ? members[0].Mmr : 0;
+                bool hasSelf = members.Any(m => m.IsSelf);
+                var rows = members
+                    .Select(m => new PlayerRow(m.Name, FormatMmr(m.Mmr, region), FormatRank(m.Rank), m.IsSelf))
+                    .ToList();
+
+                teams.Add((maxMmr, hasSelf, rows));
+            }
+
+            // Best team (by its higher-MMR member) at the top; label numbering
+            // follows the same sorted order, so "Team 1" is always the top team.
+            var ordered = teams
+                .OrderByDescending(t => t.MaxMmr)
+                .Select((t, i) => (TeamNumber: i + 1, t.HasSelf, t.Rows))
+                .ToList();
+
+            _panel?.ShowTeams(ordered);
+        }
+
+        private (int Mmr, int Rank) LookupMmrRank(string name)
+        {
+            if (_leaderBoard != null && _leaderBoard.TryGetValue(name, out var entry))
+            {
+                if (int.TryParse(entry.Rating, out int mmr))
+                    return (mmr, entry.Rank);
+                FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{entry.Rating}'");
+            }
+            return (0, 0);
+        }
+
+        private static string FormatMmr(int mmr, string region) =>
+            mmr == 0 ? (region == "CN" ? "-" : "8000↓") : mmr.ToString();
+
+        private static string FormatRank(int rank) => rank > 0 ? $"#{rank}" : "";
 
         // ---- Leaderboard fetch (adapted from HDT_BGrank) --------------------
 
@@ -433,26 +484,31 @@ namespace HDT_LobbyMMR
                 dynamic leaderboardMgr = _mirror.Root?["PlayerLeaderboardManager"]?["s_instance"];
                 if (leaderboardMgr == null) { return false; }
 
-                dynamic[] playerTiles = GetPlayerTiles(leaderboardMgr);
-                int count = playerTiles?.Length ?? 0;
+                List<List<dynamic>> teamTiles = GetPlayerTeams(leaderboardMgr);
+                int count = teamTiles.Sum(t => t.Count);
                 if (count == 0) { return false; }
 
-                var names = new List<string>();
-                for (int i = 0; i < count; i++)
+                var seen = new HashSet<string>();
+                var teams = new List<List<string>>();
+                foreach (List<dynamic> tiles in teamTiles)
                 {
-                    dynamic playerTile = playerTiles[i];
-                    // Name is only populated once the player has moused over the tile.
-                    string playerName = playerTile?["m_overlay"]?["m_heroActor"]?["m_playerNameText"]?["m_Text"];
-                    if (string.IsNullOrWhiteSpace(playerName)) { return false; }
+                    var teamNames = new List<string>();
+                    foreach (dynamic playerTile in tiles)
+                    {
+                        // Name is only populated once the player has moused over the tile.
+                        string playerName = playerTile?["m_overlay"]?["m_heroActor"]?["m_playerNameText"]?["m_Text"];
+                        if (string.IsNullOrWhiteSpace(playerName)) { return false; }
 
-                    // Strip BattleTag suffix (for users of the BattleTag mod).
-                    int idx = playerName.IndexOf('#');
-                    if (idx > 0) { playerName = playerName.Substring(0, idx); }
+                        // Strip BattleTag suffix (for users of the BattleTag mod).
+                        int idx = playerName.IndexOf('#');
+                        if (idx > 0) { playerName = playerName.Substring(0, idx); }
 
-                    if (!names.Contains(playerName)) { names.Add(playerName); }
+                        if (seen.Add(playerName)) { teamNames.Add(playerName); }
+                    }
+                    if (teamNames.Count > 0) { teams.Add(teamNames); }
                 }
 
-                _lobbyNames = names;
+                _lobbyTeams = teams;
                 return true;
             }
             catch (Exception ex)
@@ -467,11 +523,11 @@ namespace HDT_LobbyMMR
         }
 
         // From https://github.com/Zero-to-Heroes/unity-spy-.net4.5
-        private dynamic[] GetPlayerTiles(dynamic leaderboardMgr)
+        private List<List<dynamic>> GetPlayerTeams(dynamic leaderboardMgr)
         {
-            var result = new List<dynamic>();
+            var result = new List<List<dynamic>>();
             dynamic teams = leaderboardMgr["m_teams"]?["_items"];
-            if (teams == null) { return result.ToArray(); }
+            if (teams == null) { return result; }
 
             for (uint i = 0; i < teams.size(); i++)
             {
@@ -479,10 +535,12 @@ namespace HDT_LobbyMMR
                 if (team == null) { continue; }
                 dynamic tiles = team["m_playerLeaderboardCards"]?["_items"];
                 if (tiles == null) { continue; }
+                var tileList = new List<dynamic>();
                 for (uint j = 0; j < tiles.size(); j++)
-                    result.Add(tiles[j]);
+                    tileList.Add(tiles[j]);
+                result.Add(tileList);
             }
-            return result.ToArray();
+            return result;
         }
     }
 }

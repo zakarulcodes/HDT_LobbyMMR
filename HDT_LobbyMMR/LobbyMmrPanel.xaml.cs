@@ -29,6 +29,8 @@ namespace HDT_LobbyMMR
         private static readonly Brush NameBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xE3, 0xE3));
         private static readonly Brush MmrBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
         private static readonly Brush RankBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0x94, 0x94));
+        private static readonly Brush TeamLabelBrush = new SolidColorBrush(Color.FromRgb(0x6E, 0x72, 0x75));
+        private static readonly Brush DividerBrush = new SolidColorBrush(Color.FromRgb(0x4A, 0x52, 0x56));
         // Gold accent for the local player, matching HDT's highlight tone.
         private static readonly Brush SelfBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xA4, 0x41));
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
@@ -90,6 +92,45 @@ namespace HDT_LobbyMMR
 
             foreach (PlayerRow row in rows)
                 RowsPanel.Children.Add(BuildRow(row));
+
+            Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Render duo lobby rows grouped by teammate pair. Each row still shows its
+        /// own individual MMR/rank (no averaging); a thin divider and small label
+        /// separate teams. Teams are pre-sorted by the caller.
+        /// </summary>
+        public void ShowTeams(IReadOnlyList<(int TeamNumber, bool HasSelf, List<PlayerRow> Rows)> teams)
+        {
+            RowsPanel.Children.Clear();
+            StatusText.Visibility = Visibility.Collapsed;
+
+            bool first = true;
+            foreach (var team in teams)
+            {
+                if (!first)
+                {
+                    RowsPanel.Children.Add(new Border
+                    {
+                        BorderBrush = DividerBrush,
+                        BorderThickness = new Thickness(0, 1, 0, 0),
+                        Margin = new Thickness(8, 6, 8, 0)
+                    });
+                }
+                first = false;
+
+                RowsPanel.Children.Add(new TextBlock
+                {
+                    Text = team.HasSelf ? $"Team {team.TeamNumber} (you)" : $"Team {team.TeamNumber}",
+                    FontSize = 10,
+                    Foreground = TeamLabelBrush,
+                    Margin = new Thickness(10, 6, 8, 2)
+                });
+
+                foreach (PlayerRow row in team.Rows)
+                    RowsPanel.Children.Add(BuildRow(row));
+            }
 
             Visibility = Visibility.Visible;
         }
