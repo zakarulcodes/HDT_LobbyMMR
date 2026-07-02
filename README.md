@@ -41,5 +41,5 @@ You can choose where the list sits, and it remembers your choice:
 
 ## Credit
 
-The MMR data and the method for reading player names come from **IBM5100's**
+The MMR data fallback and the method for reading player names come from the original plugin by **IBM5100's**
 [HDT_BGrank](https://github.com/IBM5100o/HDT_BGrank).
