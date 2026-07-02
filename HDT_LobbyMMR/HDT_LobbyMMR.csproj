@@ -11,7 +11,7 @@
     <Deterministic>true</Deterministic>
     <!-- Keep in sync with IPlugin.Version in LobbyMmrPlugin.cs so the built DLL
          self-identifies (HDT itself reads the version from IPlugin.Version). -->
-    <Version>1.1.0</Version>
+    <Version>1.3.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
