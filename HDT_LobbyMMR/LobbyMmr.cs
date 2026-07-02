@@ -362,7 +362,9 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            _leaderBoard = new Dictionary<string, (string Rating, int Rank)>();
+            // Case-insensitive so a lobby name matches its leaderboard/streamer
+            // entry regardless of casing differences between data sources.
+            _leaderBoard = new Dictionary<string, (string Rating, int Rank)>(StringComparer.OrdinalIgnoreCase);
             bool duo = !Core.Game.IsBattlegroundsSoloMatch;
             string path = Path.Combine(Config.AppDataPath, "LobbyMMR",
                 duo ? $"LeaderBoard_{region}_duo.txt" : $"LeaderBoard_{region}.txt");
@@ -536,7 +538,7 @@ namespace HDT_LobbyMMR
             if (string.IsNullOrWhiteSpace(response))
                 return;
 
-            var streamers = new Dictionary<string, string>();
+            var streamers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string line in response.Split(new[] { "\n<br />" }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string[] tmp = line.Split(' ');
