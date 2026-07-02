@@ -9,17 +9,21 @@ tracker.
 
 ## What it does
 
-- Lists everyone in your lobby with their MMR, highest at the top.
+- Lists everyone in your lobby with their MMR and leaderboard rank (e.g. `#1404`), highest at the top.
 - Highlights **you** in gold.
-- Players ranked above 8000 show their exact number. Everyone else shows `8000↓`.
+- Players ranked above 8000 show their exact number and rank. Everyone else shows `8000↓` with no rank.
+- In **duo** lobbies, players are grouped by team, with the strongest team on top and the
+  higher-MMR teammate listed first in each team.
 - You can put the list at the **top** or the **bottom** of the session box (see below).
+
+![Duo mode grouping players by team](docs/reference2.png)
 
 Heads up: player names only appear **after you move your mouse over the leaderboard**
 in the game.
 
 ## Install
 
-1. Download `HDT_LobbyMMR-v1.1.0.zip` from the
+1. Download `HDT_LobbyMMR-v1.3.0.zip` from the
    [Releases page](https://github.com/zakarulcodes/HDT_LobbyMMR/releases).
 2. Close Hearthstone Deck Tracker.
 3. Unzip it and put `HDT_LobbyMMR.dll` into this folder (create it if it isn't there):
