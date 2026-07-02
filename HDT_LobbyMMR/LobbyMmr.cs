@@ -29,6 +29,11 @@ namespace HDT_LobbyMMR
         private bool _done = false;
         private bool _failToGetData = false;
         private bool _leaderBoardReady = false;
+        // Set true when the streamer-data fetch attempt finishes, success or
+        // not — lets OnUpdate wait a moment for it so icons aren't lost to a
+        // race where the (usually smaller/faster) leaderboard fetch happens
+        // to finish first, without ever blocking indefinitely on a dead source.
+        private bool _streamersReady = false;
         private int _nameErrors = 0;
         private bool _docked = false;
         private DockSide _dockSide = DockSide.Top;
@@ -219,7 +224,7 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            if (!_leaderBoardReady)
+            if (!_leaderBoardReady || !_streamersReady)
                 return;
 
             if (!TryGetLobbyNames())
@@ -235,6 +240,7 @@ namespace HDT_LobbyMMR
             _done = false;
             _failToGetData = false;
             _leaderBoardReady = false;
+            _streamersReady = false;
             _nameErrors = 0;
             ClearMemory();
             if (_panel != null)
@@ -505,6 +511,21 @@ namespace HDT_LobbyMMR
         /// never worth failing the core MMR feature over.
         /// </summary>
         private async Task GetStreamers()
+        {
+            try
+            {
+                await FetchStreamers();
+            }
+            finally
+            {
+                // Set regardless of outcome (success, failure, or no data) so
+                // OnUpdate's gate on this flag can't wait forever on a source
+                // that's down — it just renders without icons in that case.
+                _streamersReady = true;
+            }
+        }
+
+        private async Task FetchStreamers()
         {
             string path = Path.Combine(Config.AppDataPath, "LobbyMMR", "Streamers.txt");
             string response = null;
