@@ -11,12 +11,15 @@ namespace HDT_LobbyMMR
     {
         public string Name;
         public string Mmr;
+        /// <summary>Leaderboard rank display text (e.g. "#42"), or "" if unranked.</summary>
+        public string Rank;
         public bool IsSelf;
 
-        public PlayerRow(string name, string mmr, bool isSelf)
+        public PlayerRow(string name, string mmr, string rank, bool isSelf)
         {
             Name = name;
             Mmr = mmr;
+            Rank = rank;
             IsSelf = isSelf;
         }
     }
@@ -25,6 +28,7 @@ namespace HDT_LobbyMMR
     {
         private static readonly Brush NameBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xE3, 0xE3));
         private static readonly Brush MmrBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        private static readonly Brush RankBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0x94, 0x94));
         // Gold accent for the local player, matching HDT's highlight tone.
         private static readonly Brush SelfBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xA4, 0x41));
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
@@ -93,11 +97,22 @@ namespace HDT_LobbyMMR
         private static Border BuildRow(PlayerRow row)
         {
             var grid = new Grid { Margin = new Thickness(8, 2, 8, 2) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             // HearthstoneTextBlock = HDT's outlined Belwe font control, same as the
             // session window. It uses Fill (not Foreground) for color.
+            var rank = new HearthstoneTextBlock
+            {
+                Text = row.Rank,
+                Fill = row.IsSelf ? SelfBrush : RankBrush,
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            Grid.SetColumn(rank, 0);
+
             var name = new HearthstoneTextBlock
             {
                 Text = row.Name,
@@ -107,7 +122,7 @@ namespace HDT_LobbyMMR
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             };
-            Grid.SetColumn(name, 0);
+            Grid.SetColumn(name, 1);
 
             var mmr = new HearthstoneTextBlock
             {
@@ -117,8 +132,9 @@ namespace HDT_LobbyMMR
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            Grid.SetColumn(mmr, 1);
+            Grid.SetColumn(mmr, 2);
 
+            grid.Children.Add(rank);
             grid.Children.Add(name);
             grid.Children.Add(mmr);
 

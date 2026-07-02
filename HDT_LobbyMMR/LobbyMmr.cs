@@ -36,7 +36,9 @@ namespace HDT_LobbyMMR
 
         private string _myName;
         private List<string> _lobbyNames;
-        private Dictionary<string, string> _leaderBoard;
+        // Rank is each player's 1-based position on the region leaderboard (all
+        // sources list entries in rank order, so it's the entry's index).
+        private Dictionary<string, (string Rating, int Rank)> _leaderBoard;
 
         private Mirror _mirror;
         private HttpClient _client;
@@ -231,21 +233,26 @@ namespace HDT_LobbyMMR
         private void RenderRows()
         {
             string region = GetRegionStr();
-            var withMmr = new List<(string Name, int Mmr, bool IsSelf)>();
+            var withMmr = new List<(string Name, int Mmr, int Rank, bool IsSelf)>();
 
             foreach (string name in _lobbyNames)
             {
                 bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
                 int mmr = 0;
-                if (_leaderBoard != null && _leaderBoard.TryGetValue(name, out string value))
+                int rank = 0;
+                if (_leaderBoard != null && _leaderBoard.TryGetValue(name, out var entry))
                 {
-                    if (!int.TryParse(value, out mmr))
+                    if (!int.TryParse(entry.Rating, out mmr))
                     {
-                        FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{value}'");
+                        FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{entry.Rating}'");
                         mmr = 0;
                     }
+                    else
+                    {
+                        rank = entry.Rank;
+                    }
                 }
-                withMmr.Add((name, mmr, isSelf));
+                withMmr.Add((name, mmr, rank, isSelf));
             }
 
             // Highest MMR at the top; unknown (0) sinks to the bottom.
@@ -254,6 +261,7 @@ namespace HDT_LobbyMMR
                 .Select(x => new PlayerRow(
                     x.Name,
                     x.Mmr == 0 ? (region == "CN" ? "-" : "8000↓") : x.Mmr.ToString(),
+                    x.Rank > 0 ? $"#{x.Rank}" : "",
                     x.IsSelf))
                 .ToList();
 
@@ -272,7 +280,7 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            _leaderBoard = new Dictionary<string, string>();
+            _leaderBoard = new Dictionary<string, (string Rating, int Rank)>();
             bool duo = !Core.Game.IsBattlegroundsSoloMatch;
             string path = Path.Combine(Config.AppDataPath, "LobbyMMR",
                 duo ? $"LeaderBoard_{region}_duo.txt" : $"LeaderBoard_{region}.txt");
@@ -293,7 +301,7 @@ namespace HDT_LobbyMMR
                     Directory.CreateDirectory(Path.GetDirectoryName(path));
                     using StreamWriter writer = new StreamWriter(path);
                     foreach (var player in _leaderBoard)
-                        writer.WriteLine($"{player.Key} {player.Value}");
+                        writer.WriteLine($"{player.Key} {player.Value.Rating} {player.Value.Rank}");
                 }
                 catch (Exception ex)
                 {
@@ -312,8 +320,13 @@ namespace HDT_LobbyMMR
                     using StreamReader reader = new StreamReader(path);
                     while ((line = reader.ReadLine()) != null)
                     {
+                        // 3 tokens = current format (name rating rank); 2 tokens
+                        // handles a cache file written before rank was tracked.
                         string[] tmp = line.Split(' ');
-                        if (tmp.Length == 2) { _leaderBoard[tmp[0]] = tmp[1]; }
+                        if (tmp.Length == 3 && int.TryParse(tmp[2], out int rank))
+                            _leaderBoard[tmp[0]] = (tmp[1], rank);
+                        else if (tmp.Length == 2)
+                            _leaderBoard[tmp[0]] = (tmp[1], 0);
                     }
                     if (_leaderBoard.Count != 0)
                     {
@@ -370,16 +383,18 @@ namespace HDT_LobbyMMR
                         continue;
                     }
 
+                    // Entries are in leaderboard rank order, so each entry's
+                    // 1-based position in the list is its rank.
                     string[] lines = response.Split(new[] { "\n<br />" }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (string line in lines)
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        string[] tmp = line.Split(' ');
+                        string[] tmp = lines[i].Split(' ');
                         if (tmp.Length == 2)
                         {
                             string name = tmp[0];
                             string rating = tmp[1];
                             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(rating)) { continue; }
-                            if (!_leaderBoard.ContainsKey(name)) { _leaderBoard.Add(name, rating); }
+                            if (!_leaderBoard.ContainsKey(name)) { _leaderBoard.Add(name, (rating, i + 1)); }
                         }
                     }
                     if (_leaderBoard.Count != 0)
