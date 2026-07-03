@@ -14,6 +14,7 @@ tracker.
 - Players ranked above 8000 show their exact number and rank. Everyone else shows `8000↓` with no rank.
 - In **duo** lobbies, players are grouped by team, with the strongest team on top and the
   higher-MMR teammate listed first in each team.
+- Shows a small red dot next to the name of any player who's a **known streamer**.
 - You can put the list at the **top** or the **bottom** of the session box (see below).
 
 ![Duo mode grouping players by team](docs/reference2.png)
@@ -23,7 +24,7 @@ in the game.
 
 ## Install
 
-1. Download `HDT_LobbyMMR-v1.3.0.zip` from the
+1. Download `HDT_LobbyMMR-v1.4.0.zip` from the
    [Releases page](https://github.com/zakarulcodes/HDT_LobbyMMR/releases).
 2. Close Hearthstone Deck Tracker.
 3. Unzip it and put `HDT_LobbyMMR.dll` into this folder (create it if it isn't there):
@@ -42,6 +43,16 @@ You can choose where the list sits, and it remembers your choice:
   **Toggle dock: top / bottom** button.
 
 ![The Plugins menu showing the Dock to top and Dock to bottom options](docs/menu.png)
+
+## Known streamers
+
+Players who are known Battlegrounds streamers get a small red dot next to their name.
+The list is community-submitted and updated automatically, so no plugin update is needed
+when someone new is added.
+
+If you don't want to see it (or the rank column), open the **Plugins → Lobby MMR** menu
+and untick **Show streamer icon** or **Show rank position** — each is independent and
+remembers your choice.
 
 ## Credit
 
