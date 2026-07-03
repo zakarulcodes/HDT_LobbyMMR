@@ -54,6 +54,17 @@ If you don't want to see it (or the rank column), open the **Plugins → Lobby M
 and untick **Show streamer icon** or **Show rank position** — each is independent and
 remembers your choice.
 
+### Adding yourself to the streamer list
+
+If you stream Battlegrounds, you can link your channel yourself — no GitHub account needed:
+
+1. Go to [hdt-lobbymmr-submit.zakarulcodes.workers.dev](https://hdt-lobbymmr-submit.zakarulcodes.workers.dev/).
+2. Click **Sign in with Twitch** to prove the channel is yours.
+3. Enter your **exact in-game Battlegrounds name** (and optionally your YouTube channel), then submit.
+
+Your marker goes live within a minute or two, no plugin update required. Names are
+first-come, first-served and tied to the Twitch account that submitted them.
+
 ## Credit
 
 The MMR data fallback and the method for reading player names come from the original plugin by **IBM5100's**
