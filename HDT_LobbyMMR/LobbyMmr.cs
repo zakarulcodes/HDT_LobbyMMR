@@ -275,7 +275,7 @@ namespace HDT_LobbyMMR
                 foreach (string name in team)
                 {
                     bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
-                    (int mmr, int rank) = LookupMmrRank(name);
+                    (int mmr, int rank) = LookupMmrRank(name, isSelf);
                     withMmr.Add((name, mmr, rank, isSelf));
                 }
 
@@ -308,7 +308,7 @@ namespace HDT_LobbyMMR
                     .Select(name =>
                     {
                         bool isSelf = !string.IsNullOrEmpty(_myName) && name == _myName;
-                        (int mmr, int rank) = LookupMmrRank(name);
+                        (int mmr, int rank) = LookupMmrRank(name, isSelf);
                         return (Name: name, Mmr: mmr, Rank: rank, IsSelf: isSelf);
                     })
                     .OrderByDescending(m => m.Mmr) // higher-MMR teammate first
@@ -337,15 +337,45 @@ namespace HDT_LobbyMMR
             _panel?.ShowTeams(ordered);
         }
 
-        private (int Mmr, int Rank) LookupMmrRank(string name)
+        private (int Mmr, int Rank) LookupMmrRank(string name, bool isSelf = false)
         {
+            int mmr = 0;
+            int rank = 0;
             if (_leaderBoard != null && _leaderBoard.TryGetValue(name, out var entry))
             {
-                if (int.TryParse(entry.Rating, out int mmr))
-                    return (mmr, entry.Rank);
-                FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{entry.Rating}'");
+                if (int.TryParse(entry.Rating, out mmr))
+                    rank = entry.Rank;
+                else
+                    FileLogger.Instance.Warn($"Parse MMR failed, set MMR as 0. player:'{name}' MMR:'{entry.Rating}'");
             }
-            return (0, 0);
+
+            // Our own MMR comes straight from the game (via HDT), which is always
+            // current — the scraped leaderboard can lag behind and only lists
+            // 8000+ players. Rank still comes from the leaderboard entry.
+            if (isSelf)
+            {
+                int live = GetMyCurrentMmr();
+                if (live > 0)
+                    mmr = live;
+            }
+            return (mmr, rank);
+        }
+
+        /// <summary>
+        /// The local player's current rating as the game itself reports it
+        /// (solo or duos to match the current lobby), or 0 if unavailable.
+        /// </summary>
+        private static int GetMyCurrentMmr()
+        {
+            try
+            {
+                return Core.Game.CurrentBattlegroundsRating ?? 0;
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Warn($"Failed to read own MMR from game: {ex.Message}");
+                return 0;
+            }
         }
 
         private static string FormatMmr(int mmr, string region) =>
