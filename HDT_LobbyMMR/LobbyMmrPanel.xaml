@@ -21,7 +21,7 @@
             <!-- Header bar -->
             <Border Background="#1C2022" BorderBrush="#4A5256" BorderThickness="0,0,0,1">
                 <hdt:HearthstoneTextBlock x:Name="HeaderText"
-                           Text="LOBBY MMR"
+                           Text="Lobby MMR"
                            Fill="#FFFFFFFF"
                            FontSize="13"
                            HorizontalAlignment="Center"
