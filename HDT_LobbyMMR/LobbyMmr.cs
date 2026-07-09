@@ -350,13 +350,15 @@ namespace HDT_LobbyMMR
             }
 
             // Our own MMR comes straight from the game (via HDT), which is always
-            // current — the scraped leaderboard can lag behind and only lists
-            // 8000+ players. Rank still comes from the leaderboard entry.
+            // current — the scraped leaderboard can lag behind. Rank still comes
+            // from the leaderboard entry. Below 8000 we show the same "8000↓" as
+            // everyone else (the leaderboard only lists 8000+ players), so a live
+            // value under the cutoff maps to 0 even if a stale entry has us above it.
             if (isSelf)
             {
                 int live = GetMyCurrentMmr();
                 if (live > 0)
-                    mmr = live;
+                    mmr = live >= 8000 ? live : 0;
             }
             return (mmr, rank);
         }
