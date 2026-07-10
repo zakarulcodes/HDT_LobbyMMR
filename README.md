@@ -24,7 +24,7 @@ in the game.
 
 ## Install
 
-1. Download `HDT_LobbyMMR-v1.4.0.zip` from the
+1. Download the latest `HDT_LobbyMMR-vX.Y.Z.zip` from the
    [Releases page](https://github.com/zakarulcodes/HDT_LobbyMMR/releases).
 2. Close Hearthstone Deck Tracker.
 3. Unzip it and put `HDT_LobbyMMR.dll` into this folder (create it if it isn't there):
