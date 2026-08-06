@@ -358,7 +358,19 @@ namespace HDT_LobbyMMR
             {
                 int live = GetMyCurrentMmr();
                 if (live > 0)
-                    mmr = live >= 8000 ? live : 0;
+                {
+                    if (live >= 8000)
+                    {
+                        mmr = live;
+                    }
+                    else
+                    {
+                        // Below the cutoff we show "8000↓" with no rank, like
+                        // everyone else — drop the stale leaderboard rank too.
+                        mmr = 0;
+                        rank = 0;
+                    }
+                }
             }
             return (mmr, rank);
         }
