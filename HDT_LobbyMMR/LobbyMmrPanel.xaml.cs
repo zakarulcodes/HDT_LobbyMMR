@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -15,15 +16,18 @@ namespace HDT_LobbyMMR
         /// <summary>Leaderboard rank display text (e.g. "#42"), or "" if unranked.</summary>
         public string Rank;
         public bool IsSelf;
+        /// <summary>True once this player has been eliminated from the lobby.</summary>
+        public bool IsEliminated;
         /// <summary>Twitch/YouTube channel URL if this player is a known streamer, else null.</summary>
         public string StreamUrl;
 
-        public PlayerRow(string name, string mmr, string rank, bool isSelf, string streamUrl = null)
+        public PlayerRow(string name, string mmr, string rank, bool isSelf, bool isEliminated, string streamUrl = null)
         {
             Name = name;
             Mmr = mmr;
             Rank = rank;
             IsSelf = isSelf;
+            IsEliminated = isEliminated;
             StreamUrl = streamUrl;
         }
     }
@@ -40,6 +44,8 @@ namespace HDT_LobbyMMR
         private static readonly Brush SelfRowBg = new SolidColorBrush(Color.FromArgb(0x22, 0xD9, 0xA4, 0x41));
         // "Known streamer" marker dot.
         private static readonly Brush StreamerBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x4B, 0x4A));
+        // Muted grey for eliminated players (and a fully-eliminated duo team header).
+        private static readonly Brush EliminatedBrush = new SolidColorBrush(Color.FromRgb(0x6E, 0x72, 0x75));
 
         private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
         // Pulls a bottom-docked panel up to compensate for the layout gap the
@@ -126,11 +132,12 @@ namespace HDT_LobbyMMR
                 }
                 first = false;
 
+                bool teamOut = team.Rows.Count > 0 && team.Rows.All(r => r.IsEliminated);
                 RowsPanel.Children.Add(new TextBlock
                 {
                     Text = team.HasSelf ? $"Team {team.TeamNumber} (you)" : $"Team {team.TeamNumber}",
                     FontSize = 10,
-                    Foreground = TeamLabelBrush,
+                    Foreground = teamOut ? EliminatedBrush : TeamLabelBrush,
                     Margin = new Thickness(10, 6, 8, 2)
                 });
 
@@ -150,10 +157,14 @@ namespace HDT_LobbyMMR
 
             // HearthstoneTextBlock = HDT's outlined Belwe font control, same as the
             // session window. It uses Fill (not Foreground) for color.
+            Brush rankFill = row.IsEliminated ? EliminatedBrush : (row.IsSelf ? SelfBrush : RankBrush);
+            Brush nameFill = row.IsEliminated ? EliminatedBrush : (row.IsSelf ? SelfBrush : NameBrush);
+            Brush mmrFill = row.IsEliminated ? EliminatedBrush : (row.IsSelf ? SelfBrush : MmrBrush);
+
             var rank = new HearthstoneTextBlock
             {
                 Text = row.Rank,
-                Fill = row.IsSelf ? SelfBrush : RankBrush,
+                Fill = rankFill,
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0)
@@ -163,7 +174,7 @@ namespace HDT_LobbyMMR
             var name = new HearthstoneTextBlock
             {
                 Text = row.Name,
-                Fill = row.IsSelf ? SelfBrush : NameBrush,
+                Fill = nameFill,
                 FontSize = 13,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center
@@ -188,7 +199,7 @@ namespace HDT_LobbyMMR
             var mmr = new HearthstoneTextBlock
             {
                 Text = row.Mmr,
-                Fill = row.IsSelf ? SelfBrush : MmrBrush,
+                Fill = mmrFill,
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
@@ -201,7 +212,7 @@ namespace HDT_LobbyMMR
 
             return new Border
             {
-                Background = row.IsSelf ? SelfRowBg : Brushes.Transparent,
+                Background = (row.IsSelf && !row.IsEliminated) ? SelfRowBg : Brushes.Transparent,
                 Child = grid
             };
         }

@@ -11,7 +11,7 @@
     <Deterministic>true</Deterministic>
     <!-- Keep in sync with IPlugin.Version in LobbyMmrPlugin.cs so the built DLL
          self-identifies (HDT itself reads the version from IPlugin.Version). -->
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +25,11 @@
          reference it for compilation only and do not copy it to the plugins folder. -->
     <Reference Include="untapped-scry-dotnet">
       <HintPath>Reference\untapped-scry-dotnet.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- GameTag enum / card DB. HDT ships this DLL; reference for compile only. -->
+    <Reference Include="HearthDb">
+      <HintPath>Reference\HearthDb.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <!-- Needed for the C# 'dynamic' calls used when traversing game memory. -->

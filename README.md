@@ -15,6 +15,8 @@ tracker.
 - In **duo** lobbies, players are grouped by team, with the strongest team on top and the
   higher-MMR teammate listed first in each team.
 - Shows a small red dot next to the name of any player who's a **known streamer**.
+- **Greys out players as they're eliminated** and drops them below the survivors, most-recently
+  knocked out first. In duo lobbies a team's header greys out once both teammates are gone.
 - You can put the list at the **top** or the **bottom** of the session box (see below).
 
 ![Duo mode grouping players by team](docs/reference2.png)

@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using HearthDb.Enums;
 using Hearthstone_Deck_Tracker;
 using Hearthstone_Deck_Tracker.Enums;
 
@@ -45,6 +46,20 @@ namespace HDT_LobbyMMR
         // One inner list per lobby team (size 1 in solo, 2 in duo), in the game's
         // own team order — preserved so duo rows can be grouped by teammate.
         private List<List<string>> _lobbyTeams;
+        // Hero card id -> lobby name, captured from the leaderboard tiles when names
+        // load. Bridges the log-tracked hero entity (keyed by card id) to the name.
+        private Dictionary<string, string> _nameByHeroCard;
+        // Name -> elimination ordinal (0 = first out), assigned once when a player is
+        // first seen dead (health <= 0). Grow-only: a player stays eliminated for the
+        // rest of the match even when the leaderboard tile later reads blank (e.g. it
+        // resets during combat), so a greyed row never flips back to white. Doubles as
+        // the "is eliminated" set. Also gives the greyed rows their death-order sort.
+        private Dictionary<string, int> _elimOrder;
+        private int _elimSeq;
+        // Change-detection so we only rebuild the panel when the eliminated set
+        // changes, not every tick.
+        private bool _hasRendered;
+        private string _elimKey;
         // Rank is each player's 1-based position on the region leaderboard (all
         // sources list entries in rank order, so it's the entry's index).
         private Dictionary<string, (string Rating, int Rank)> _leaderBoard;
@@ -227,12 +242,25 @@ namespace HDT_LobbyMMR
             if (!_leaderBoardReady || !_streamersReady)
                 return;
 
-            if (!TryGetLobbyNames())
-                return; // names not visible yet (player must mouse over the leaderboard)
+            // Refresh names/hero-card ids whenever the leaderboard tiles are readable
+            // (also picks up a hero transform). The first read needs a hover; once we
+            // have the names, later ticks keep going even if the tiles blank out during
+            // combat, so grey-out stays live.
+            TryGetLobbyNames();
+            if (_lobbyTeams == null)
+                return; // never captured yet — waiting on the initial hover
 
-            RenderRows();
-            ClearMemory();
-            _done = true;
+            // Elimination is read passively from HDT's log-tracked entities each tick,
+            // so players grey out live without hovering. Only rebuild the panel when the
+            // eliminated set changes; _elimOrder only grows, so a count change = a new out.
+            UpdateElimination();
+            string key = (_elimOrder?.Count ?? 0).ToString();
+            if (!_hasRendered || key != _elimKey)
+            {
+                RenderRows();
+                _hasRendered = true;
+                _elimKey = key;
+            }
         }
 
         private void Reset()
@@ -242,6 +270,8 @@ namespace HDT_LobbyMMR
             _leaderBoardReady = false;
             _streamersReady = false;
             _nameErrors = 0;
+            _hasRendered = false;
+            _elimKey = null;
             ClearMemory();
             if (_panel != null)
                 _panel.Visibility = Visibility.Collapsed;
@@ -251,6 +281,9 @@ namespace HDT_LobbyMMR
         {
             _myName = null;
             _lobbyTeams = null;
+            _nameByHeroCard = null;
+            _elimOrder = null;
+            _elimSeq = 0;
             _leaderBoard = null;
             _streamers = null;
             _mirror?.Clean();
@@ -279,13 +312,17 @@ namespace HDT_LobbyMMR
                     withMmr.Add((name, mmr, rank, isSelf));
                 }
 
-            // Highest MMR at the top; unknown (0) sinks to the bottom.
+            // Alive players first (highest MMR at top, unknown 0 sinks to the bottom),
+            // then eliminated players greyed below in reverse death order (most-recently
+            // eliminated just under the survivors, first-out at the very bottom).
             var rows = withMmr
-                .OrderByDescending(x => x.Mmr)
+                .OrderBy(x => IsElim(x.Name) ? 1 : 0)
+                .ThenByDescending(x => IsElim(x.Name) ? ElimOrd(x.Name) : x.Mmr)
                 .Select(x => new PlayerRow(
                     x.Name, FormatMmr(x.Mmr, region),
                     _showRank ? FormatRank(x.Rank) : "",
                     x.IsSelf,
+                    IsElim(x.Name),
                     _showStreamerIcon ? LookupStreamUrl(x.Name) : null))
                 .ToList();
 
@@ -300,7 +337,7 @@ namespace HDT_LobbyMMR
         /// </summary>
         private void RenderGroupedRows(string region)
         {
-            var teams = new List<(int MaxMmr, bool HasSelf, List<PlayerRow> Rows)>();
+            var teams = new List<(int MaxMmr, bool IsDead, int ElimOrd, bool HasSelf, List<PlayerRow> Rows)>();
 
             foreach (List<string> team in _lobbyTeams)
             {
@@ -321,16 +358,23 @@ namespace HDT_LobbyMMR
                         m.Name, FormatMmr(m.Mmr, region),
                         _showRank ? FormatRank(m.Rank) : "",
                         m.IsSelf,
+                        IsElim(m.Name),
                         _showStreamerIcon ? LookupStreamUrl(m.Name) : null))
                     .ToList();
 
-                teams.Add((maxMmr, hasSelf, rows));
+                // A team is out once both teammates are eliminated; its ordinal is
+                // the last member to die (so teams sort by when the team went out).
+                bool isDead = team.All(n => IsElim(n));
+                int elimOrd = isDead ? team.Max(n => ElimOrd(n)) : -1;
+                teams.Add((maxMmr, isDead, elimOrd, hasSelf, rows));
             }
 
-            // Best team (by its higher-MMR member) at the top; label numbering
-            // follows the same sorted order, so "Team 1" is always the top team.
+            // Alive teams first (best by higher-MMR member at top), then eliminated
+            // teams greyed below in reverse death order. Label numbering follows the
+            // final order, so "Team 1" is always the top team.
             var ordered = teams
-                .OrderByDescending(t => t.MaxMmr)
+                .OrderBy(t => t.IsDead ? 1 : 0)
+                .ThenByDescending(t => t.IsDead ? t.ElimOrd : t.MaxMmr)
                 .Select((t, i) => (TeamNumber: i + 1, t.HasSelf, t.Rows))
                 .ToList();
 
@@ -396,6 +440,12 @@ namespace HDT_LobbyMMR
             mmr == 0 ? (region == "CN" ? "-" : "8000↓") : mmr.ToString();
 
         private static string FormatRank(int rank) => rank > 0 ? $"#{rank}" : "";
+
+        private bool IsElim(string name) =>
+            _elimOrder != null && _elimOrder.ContainsKey(name);
+
+        private int ElimOrd(string name) =>
+            _elimOrder != null && _elimOrder.TryGetValue(name, out int o) ? o : -1;
 
         private string LookupStreamUrl(string name) =>
             _streamers != null && _streamers.TryGetValue(name, out string url) ? url : null;
@@ -641,6 +691,7 @@ namespace HDT_LobbyMMR
                 int count = teamTiles.Sum(t => t.Count);
                 if (count == 0) { return false; }
 
+                var nameByHeroCard = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 var seen = new HashSet<string>();
                 var teams = new List<List<string>>();
                 foreach (List<dynamic> tiles in teamTiles)
@@ -648,13 +699,22 @@ namespace HDT_LobbyMMR
                     var teamNames = new List<string>();
                     foreach (dynamic playerTile in tiles)
                     {
+                        dynamic hero = playerTile?["m_overlay"]?["m_heroActor"];
+
                         // Name is only populated once the player has moused over the tile.
-                        string playerName = playerTile?["m_overlay"]?["m_heroActor"]?["m_playerNameText"]?["m_Text"];
+                        string playerName = hero?["m_playerNameText"]?["m_Text"];
                         if (string.IsNullOrWhiteSpace(playerName)) { return false; }
 
                         // Strip BattleTag suffix (for users of the BattleTag mod).
                         int idx = playerName.IndexOf('#');
                         if (idx > 0) { playerName = playerName.Substring(0, idx); }
+
+                        // Each tile's game entity carries the hero's card id. It's unique
+                        // per lobby, so it bridges this name to the log-tracked hero
+                        // entity, whose live health drives passive grey-out (UpdateElimination).
+                        string heroCard = playerTile?["m_entity"]?["m_cardIdInternal"];
+                        if (!string.IsNullOrEmpty(heroCard))
+                            nameByHeroCard[heroCard] = playerName;
 
                         if (seen.Add(playerName)) { teamNames.Add(playerName); }
                     }
@@ -662,6 +722,7 @@ namespace HDT_LobbyMMR
                 }
 
                 _lobbyTeams = teams;
+                _nameByHeroCard = nameByHeroCard;
                 return true;
             }
             catch (Exception ex)
@@ -672,6 +733,40 @@ namespace HDT_LobbyMMR
                 else if (_nameErrors == 5)
                     FileLogger.Instance.Error("Failed to read lobby names; further errors suppressed", ex);
                 return false;
+            }
+        }
+
+        // ---- Passive elimination from HDT's log-tracked entities ------------
+
+        /// <summary>
+        /// Mark players eliminated from the game entities HDT parses from the power log
+        /// (no hover, no memory read, stays correct through combat). A leaderboard hero
+        /// is out when HEALTH + ARMOR - DAMAGE &lt;= 0. Bridged to the lobby name by the
+        /// hero's card id (unique per lobby). Grow-only: once out, stays greyed.
+        /// </summary>
+        private void UpdateElimination()
+        {
+            if (_nameByHeroCard == null)
+                return;
+            var ents = Core.Game?.Entities;
+            if (ents == null)
+                return;
+            if (_elimOrder == null)
+                _elimOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var e in ents.Values)
+            {
+                if (e == null || !e.HasTag(GameTag.PLAYER_LEADERBOARD_PLACE))
+                    continue;
+                int health = e.GetTag(GameTag.HEALTH);
+                if (health <= 0)
+                    continue; // hero not initialised yet (pre-pick); can't be dead
+                if (health + e.GetTag(GameTag.ARMOR) - e.GetTag(GameTag.DAMAGE) > 0)
+                    continue; // still alive
+                string card = e.CardId;
+                if (!string.IsNullOrEmpty(card) && _nameByHeroCard.TryGetValue(card, out string name)
+                    && !_elimOrder.ContainsKey(name))
+                    _elimOrder[name] = _elimSeq++;
             }
         }
 
