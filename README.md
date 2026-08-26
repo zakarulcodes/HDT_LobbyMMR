@@ -16,8 +16,9 @@ tracker.
   higher-MMR teammate listed first in each team.
 - Shows a small red dot next to the name of any player who's a **known streamer**.
 - **Hover a player to see their past-season ranks** in a box under their name: rank and
-  MMR for each season they finished at 8000+ (seasons 6-18), newest first. Players with
-  no matching history show `No history`.
+  MMR for each season they finished at 8000+, newest first. Solo lobbies show solo history
+  (seasons 6-18); duo lobbies show duo history (seasons 12-18). Players with no matching
+  history show `No history`.
 - **Greys out players as they're eliminated** and drops them below the survivors, most-recently
   knocked out first. In duo lobbies a team's header greys out once both teammates are gone.
 - You can put the list at the **top** or the **bottom** of the session box (see below).

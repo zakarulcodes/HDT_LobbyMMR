@@ -723,8 +723,11 @@ namespace HDT_LobbyMMR
             if (region == "UNKNOWN" || region == "CN")
                 return;
 
-            string url = $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{region}_history.txt";
-            string path = Path.Combine(Config.AppDataPath, "LobbyMMR", $"{region}_history.txt");
+            // Duo lobbies use the duo past-season board; solo uses the solo one.
+            string mode = !Core.Game.IsBattlegroundsSoloMatch ? "_duo" : "";
+            string file = $"{region}{mode}_history.txt";
+            string url = $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{file}";
+            string path = Path.Combine(Config.AppDataPath, "LobbyMMR", file);
             string response = null;
             try
             {
@@ -778,7 +781,7 @@ namespace HDT_LobbyMMR
                 else if (rating > seasons[i].Rating) seasons[i] = (season, rank, rating);
             }
             _history = history;
-            FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({region})");
+            FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({file})");
         }
 
         private string GetRegionStr()

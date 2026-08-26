@@ -28,7 +28,7 @@ namespace HDT_LobbyMMR
         public string Name => "HDT_LobbyMMR";
         public string Description => "Shows the MMR of every player in the Battlegrounds lobby, docked to the top or bottom of the Battlegrounds Session window.";
         public string Author => "Zakarul";
-        public Version Version => new Version(1, 7, 0);
+        public Version Version => new Version(1, 7, 1);
         public string ButtonText => "Toggle dock: top / bottom";
 
         public void OnLoad()
