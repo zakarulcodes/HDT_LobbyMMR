@@ -17,30 +17,51 @@
             CornerRadius="3"
             HorizontalAlignment="Left"
             VerticalAlignment="Top">
-        <StackPanel>
-            <!-- Header bar -->
-            <Border Background="#1C2022" BorderBrush="#4A5256" BorderThickness="0,0,0,1">
-                <hdt:HearthstoneTextBlock x:Name="HeaderText"
-                           Text="Lobby MMR"
-                           Fill="#FFFFFFFF"
-                           FontSize="13"
-                           HorizontalAlignment="Center"
-                           Margin="0,6"/>
+        <!-- Grid so the hover box can float on top of the rows. HDT's overlay is
+             click-through, so WPF ToolTips never fire here; the box is shown by
+             mouse-position polling instead (see UpdateHover in code-behind). -->
+        <Grid x:Name="ContentRoot">
+            <StackPanel>
+                <!-- Header bar -->
+                <Border Background="#1C2022" BorderBrush="#4A5256" BorderThickness="0,0,0,1">
+                    <hdt:HearthstoneTextBlock x:Name="HeaderText"
+                               Text="Lobby MMR"
+                               Fill="#FFFFFFFF"
+                               FontSize="13"
+                               HorizontalAlignment="Center"
+                               Margin="0,6"/>
+                </Border>
+
+                <!-- Status line (shown while loading / on error / idle) -->
+                <TextBlock x:Name="StatusText"
+                           Text="Waiting for lobby…"
+                           Foreground="#FFFFFFFF"
+                           Opacity="0.55"
+                           FontSize="11"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Margin="8,8"
+                           Visibility="Visible"/>
+
+                <!-- Player rows are added here in code-behind -->
+                <StackPanel x:Name="RowsPanel" Margin="0,2,0,4"/>
+            </StackPanel>
+
+            <!-- Past-season history box, positioned under the hovered row in code. -->
+            <Border x:Name="HoverBox"
+                    Visibility="Collapsed"
+                    Background="#1C2022"
+                    BorderBrush="#6E7275"
+                    BorderThickness="1"
+                    CornerRadius="2"
+                    Padding="8,5"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="HoverTranslate"/>
+                </Border.RenderTransform>
+                <StackPanel x:Name="HoverLines"/>
             </Border>
-
-            <!-- Status line (shown while loading / on error / idle) -->
-            <TextBlock x:Name="StatusText"
-                       Text="Waiting for lobby…"
-                       Foreground="#FFFFFFFF"
-                       Opacity="0.55"
-                       FontSize="11"
-                       TextAlignment="Center"
-                       TextWrapping="Wrap"
-                       Margin="8,8"
-                       Visibility="Visible"/>
-
-            <!-- Player rows are added here in code-behind -->
-            <StackPanel x:Name="RowsPanel" Margin="0,2,0,4"/>
-        </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

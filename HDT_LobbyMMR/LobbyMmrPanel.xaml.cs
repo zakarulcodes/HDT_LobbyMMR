@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -59,6 +60,18 @@ namespace HDT_LobbyMMR
         private readonly TranslateTransform _translate = new TranslateTransform(0, 0);
         private readonly TransformGroup _transform = new TransformGroup();
 
+        // Rows that have history, with their pre-built tooltip lines. Rebuilt on
+        // every ShowRows/ShowTeams; polled each tick by UpdateHover to drive the
+        // manual hover box (WPF ToolTips don't fire in HDT's click-through overlay).
+        private readonly List<(FrameworkElement El, string Name, IReadOnlyList<string> Lines)> _hoverRows =
+            new List<(FrameworkElement, string, IReadOnlyList<string>)>();
+        private FrameworkElement _hoverEl;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int X; public int Y; }
+        [DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT p);
+
         public LobbyMmrPanel()
         {
             InitializeComponent();
@@ -95,6 +108,7 @@ namespace HDT_LobbyMMR
         /// <summary>Show a status message (loading / error / idle) and clear the rows.</summary>
         public void ShowMessage(string text)
         {
+            ResetHover();
             RowsPanel.Children.Clear();
             StatusText.Text = text;
             StatusText.Visibility = Visibility.Visible;
@@ -104,6 +118,7 @@ namespace HDT_LobbyMMR
         /// <summary>Render the lobby player list.</summary>
         public void ShowRows(IReadOnlyList<PlayerRow> rows)
         {
+            ResetHover();
             RowsPanel.Children.Clear();
             StatusText.Visibility = Visibility.Collapsed;
 
@@ -120,6 +135,7 @@ namespace HDT_LobbyMMR
         /// </summary>
         public void ShowTeams(IReadOnlyList<(int TeamNumber, bool HasSelf, List<PlayerRow> Rows)> teams)
         {
+            ResetHover();
             RowsPanel.Children.Clear();
             StatusText.Visibility = Visibility.Collapsed;
 
@@ -153,7 +169,7 @@ namespace HDT_LobbyMMR
             Visibility = Visibility.Visible;
         }
 
-        private static Border BuildRow(PlayerRow row)
+        private Border BuildRow(PlayerRow row)
         {
             var grid = new Grid { Margin = new Thickness(8, 2, 8, 2) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // rank
@@ -220,24 +236,96 @@ namespace HDT_LobbyMMR
                 Background = (row.IsSelf && !row.IsEliminated) ? SelfRowBg : Brushes.Transparent,
                 Child = grid
             };
-            if (row.History != null && row.History.Count > 0)
-                border.ToolTip = BuildHistoryTooltip(row.History);
+            // Register every row; a player with no matched history shows a
+            // "No history" box rather than nothing, so hovering always responds.
+            _hoverRows.Add((border, row.Name, row.History));
             return border;
         }
 
-        /// <summary>A simple stacked tooltip listing a player's past-season ranks.</summary>
-        private static object BuildHistoryTooltip(IReadOnlyList<string> history)
+        // ---- Manual hover box (mouse polling) ------------------------------
+
+        /// <summary>
+        /// Poll the cursor and show the past-season box under whichever player row
+        /// it's over. Called every update tick by the plugin. HDT's overlay is
+        /// click-through so WPF never delivers mouse events here — we hit-test the
+        /// row rectangles against the OS cursor position in screen pixels instead.
+        /// </summary>
+        public void UpdateHover()
         {
-            var stack = new StackPanel();
-            stack.Children.Add(new TextBlock
+            if (_hoverRows.Count == 0 || !GetCursorPos(out POINT p))
             {
-                Text = "Past seasons",
-                FontWeight = FontWeights.Bold,
+                HideHover();
+                return;
+            }
+
+            foreach (var (el, name, lines) in _hoverRows)
+            {
+                if (el.ActualWidth <= 0 || !el.IsVisible)
+                    continue;
+                Point tl = el.PointToScreen(new Point(0, 0));
+                Point br = el.PointToScreen(new Point(el.ActualWidth, el.ActualHeight));
+                if (p.X >= tl.X && p.X <= br.X && p.Y >= tl.Y && p.Y <= br.Y)
+                {
+                    ShowHoverFor(el, name, lines);
+                    return;
+                }
+            }
+            HideHover();
+        }
+
+        private void ShowHoverFor(FrameworkElement row, string name, IReadOnlyList<string> lines)
+        {
+            if (ReferenceEquals(_hoverEl, row))
+                return; // already showing this row's box; nothing to rebuild
+
+            HoverLines.Children.Clear();
+            HoverLines.Children.Add(new TextBlock
+            {
+                Text = $"Past seasons - {name}",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x94, 0x94)),
+                FontSize = 10,
                 Margin = new Thickness(0, 0, 0, 3)
             });
-            foreach (string line in history)
-                stack.Children.Add(new TextBlock { Text = line });
-            return stack;
+            if (lines == null || lines.Count == 0)
+            {
+                HoverLines.Children.Add(new TextBlock
+                {
+                    Text = "No history",
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x94, 0x94)),
+                    FontSize = 11
+                });
+            }
+            else
+            {
+                foreach (string line in lines)
+                    HoverLines.Children.Add(new TextBlock
+                    {
+                        Text = line,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xE3, 0xE3)),
+                        FontSize = 11
+                    });
+            }
+
+            // Place the box just below the hovered row, in ContentRoot space.
+            Point pos = row.TransformToAncestor(ContentRoot).Transform(new Point(0, row.ActualHeight));
+            HoverTranslate.Y = pos.Y;
+            HoverBox.Visibility = Visibility.Visible;
+            _hoverEl = row;
+        }
+
+        private void HideHover()
+        {
+            if (_hoverEl == null)
+                return;
+            HoverBox.Visibility = Visibility.Collapsed;
+            _hoverEl = null;
+        }
+
+        /// <summary>Drop stale row references and hide the box before a rebuild.</summary>
+        private void ResetHover()
+        {
+            _hoverRows.Clear();
+            HideHover();
         }
     }
 }

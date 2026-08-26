@@ -268,6 +268,10 @@ namespace HDT_LobbyMMR
                 _hasRendered = true;
                 _elimKey = key;
             }
+
+            // Poll the cursor every tick to drive the manual history hover box
+            // (WPF ToolTips don't fire in HDT's click-through overlay).
+            _panel?.UpdateHover();
         }
 
         private void Reset()
