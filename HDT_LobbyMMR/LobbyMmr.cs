@@ -67,6 +67,12 @@ namespace HDT_LobbyMMR
         // Best-effort: a missed/failed fetch just means no icons are shown, it never
         // blocks or fails the core MMR feature.
         private Dictionary<string, string> _streamers;
+        // Name -> that player's finished-season leaderboard history for the region,
+        // newest season first. Best-effort like _streamers: a missing file just means
+        // no hover tooltip. Data is a one-time scrape of Blizzard's past-season
+        // leaderboards and never changes, so it's cached locally after first fetch.
+        private Dictionary<string, List<(int Season, int Rank, int Rating)>> _history;
+        private bool _historyReady = false;
 
         private Mirror _mirror;
         private HttpClient _client;
@@ -226,6 +232,7 @@ namespace HDT_LobbyMMR
                 _panel?.ShowMessage("Reading lobby…");
                 _ = GetLeaderBoard();
                 _ = GetStreamers();
+                _ = GetHistory();
             }
 
             if (_done || Core.Game.GetTurnNumber() == 0)
@@ -239,7 +246,7 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            if (!_leaderBoardReady || !_streamersReady)
+            if (!_leaderBoardReady || !_streamersReady || !_historyReady)
                 return;
 
             // Refresh names/hero-card ids whenever the leaderboard tiles are readable
@@ -269,6 +276,7 @@ namespace HDT_LobbyMMR
             _failToGetData = false;
             _leaderBoardReady = false;
             _streamersReady = false;
+            _historyReady = false;
             _nameErrors = 0;
             _hasRendered = false;
             _elimKey = null;
@@ -286,6 +294,7 @@ namespace HDT_LobbyMMR
             _elimSeq = 0;
             _leaderBoard = null;
             _streamers = null;
+            _history = null;
             _mirror?.Clean();
         }
 
@@ -323,7 +332,8 @@ namespace HDT_LobbyMMR
                     _showRank ? FormatRank(x.Rank) : "",
                     x.IsSelf,
                     IsElim(x.Name),
-                    _showStreamerIcon ? LookupStreamUrl(x.Name) : null))
+                    _showStreamerIcon ? LookupStreamUrl(x.Name) : null,
+                    LookupHistory(x.Name)))
                 .ToList();
 
             _panel?.ShowRows(rows);
@@ -359,7 +369,8 @@ namespace HDT_LobbyMMR
                         _showRank ? FormatRank(m.Rank) : "",
                         m.IsSelf,
                         IsElim(m.Name),
-                        _showStreamerIcon ? LookupStreamUrl(m.Name) : null))
+                        _showStreamerIcon ? LookupStreamUrl(m.Name) : null,
+                        LookupHistory(m.Name)))
                     .ToList();
 
                 // A team is out once both teammates are eliminated; its ordinal is
@@ -449,6 +460,20 @@ namespace HDT_LobbyMMR
 
         private string LookupStreamUrl(string name) =>
             _streamers != null && _streamers.TryGetValue(name, out string url) ? url : null;
+
+        /// <summary>
+        /// This player's past-season ranks as preformatted tooltip lines, newest
+        /// season first (e.g. "S14   #42   11441"), or null if none are known.
+        /// </summary>
+        private IReadOnlyList<string> LookupHistory(string name)
+        {
+            if (_history == null || !_history.TryGetValue(name, out var seasons))
+                return null;
+            return seasons
+                .OrderByDescending(s => s.Season)
+                .Select(s => $"S{s.Season}   #{s.Rank}   {s.Rating}")
+                .ToList();
+        }
 
         // ---- Leaderboard fetch (adapted from HDT_BGrank) --------------------
 
@@ -663,6 +688,93 @@ namespace HDT_LobbyMMR
             }
             _streamers = streamers;
             FileLogger.Instance.Info($"Loaded {_streamers.Count} known streamers");
+        }
+
+        // ---- Past-season history fetch --------------------------------------
+
+        /// <summary>
+        /// Best-effort fetch of the region's finished-season leaderboard history
+        /// (see the scraped {region}_history.txt files). Failures are logged and
+        /// swallowed — a missing hover tooltip is never worth failing the core MMR
+        /// feature over. Sets <see cref="_historyReady"/> regardless of outcome so
+        /// OnUpdate's gate can't wait forever on a source that's down.
+        /// </summary>
+        private async Task GetHistory()
+        {
+            try
+            {
+                await FetchHistory();
+            }
+            finally
+            {
+                _historyReady = true;
+            }
+        }
+
+        private async Task FetchHistory()
+        {
+            string region = GetRegionStr();
+            // CN isn't part of the scraped past-season set (separate, season-bound
+            // API), so there's no file to fetch — just render without tooltips.
+            if (region == "UNKNOWN" || region == "CN")
+                return;
+
+            string url = $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{region}_history.txt";
+            string path = Path.Combine(Config.AppDataPath, "LobbyMMR", $"{region}_history.txt");
+            string response = null;
+            try
+            {
+                response = await _client.GetStringAsync(url);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Warn($"Failed to fetch history data: {ex.Message}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(response))
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllText(path, response);
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Instance.Error("Failed to cache history data locally", ex);
+                }
+            }
+            else if (File.Exists(path))
+            {
+                // Finished-season data never changes, so a local copy is as good as
+                // the network one — fall back to it whenever the fetch comes up empty.
+                try { response = File.ReadAllText(path); }
+                catch (Exception ex) { FileLogger.Instance.Error("Failed to read cached history data", ex); }
+            }
+
+            if (string.IsNullOrWhiteSpace(response))
+                return;
+
+            var history = new Dictionary<string, List<(int Season, int Rank, int Rating)>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in response.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                // name<TAB>rank<TAB>rating<TAB>season
+                string[] tmp = line.TrimEnd('\r').Split('\t');
+                if (tmp.Length != 4) continue;
+                if (!int.TryParse(tmp[1], out int rank)) continue;
+                if (!int.TryParse(tmp[2], out int rating)) continue;
+                if (!int.TryParse(tmp[3], out int season)) continue;
+                if (!history.TryGetValue(tmp[0], out var seasons))
+                    history[tmp[0]] = seasons = new List<(int, int, int)>();
+                // Names carry no discriminator, so a common name (e.g. "jeef") can
+                // match several accounts in one season. Keep the top-rated entry per
+                // season, matching how the live leaderboard resolves name collisions
+                // (highest-ranked wins) — one clean row per season in the tooltip.
+                int i = seasons.FindIndex(e => e.Season == season);
+                if (i < 0) seasons.Add((season, rank, rating));
+                else if (rating > seasons[i].Rating) seasons[i] = (season, rank, rating);
+            }
+            _history = history;
+            FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({region})");
         }
 
         private string GetRegionStr()

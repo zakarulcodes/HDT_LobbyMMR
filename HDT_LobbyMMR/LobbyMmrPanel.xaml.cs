@@ -20,8 +20,12 @@ namespace HDT_LobbyMMR
         public bool IsEliminated;
         /// <summary>Twitch/YouTube channel URL if this player is a known streamer, else null.</summary>
         public string StreamUrl;
+        /// <summary>Preformatted past-season lines (newest first) for the hover tooltip,
+        /// e.g. "S14   #42   11441". Empty when no history is known for this player.</summary>
+        public IReadOnlyList<string> History;
 
-        public PlayerRow(string name, string mmr, string rank, bool isSelf, bool isEliminated, string streamUrl = null)
+        public PlayerRow(string name, string mmr, string rank, bool isSelf, bool isEliminated,
+            string streamUrl = null, IReadOnlyList<string> history = null)
         {
             Name = name;
             Mmr = mmr;
@@ -29,6 +33,7 @@ namespace HDT_LobbyMMR
             IsSelf = isSelf;
             IsEliminated = isEliminated;
             StreamUrl = streamUrl;
+            History = history;
         }
     }
 
@@ -210,11 +215,29 @@ namespace HDT_LobbyMMR
             grid.Children.Add(nameGroup);
             grid.Children.Add(mmr);
 
-            return new Border
+            var border = new Border
             {
                 Background = (row.IsSelf && !row.IsEliminated) ? SelfRowBg : Brushes.Transparent,
                 Child = grid
             };
+            if (row.History != null && row.History.Count > 0)
+                border.ToolTip = BuildHistoryTooltip(row.History);
+            return border;
+        }
+
+        /// <summary>A simple stacked tooltip listing a player's past-season ranks.</summary>
+        private static object BuildHistoryTooltip(IReadOnlyList<string> history)
+        {
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Past seasons",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 3)
+            });
+            foreach (string line in history)
+                stack.Children.Add(new TextBlock { Text = line });
+            return stack;
         }
     }
 }
