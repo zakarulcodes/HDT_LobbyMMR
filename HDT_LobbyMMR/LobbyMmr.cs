@@ -72,7 +72,10 @@ namespace HDT_LobbyMMR
         // no hover tooltip. Data is a one-time scrape of Blizzard's past-season
         // leaderboards and never changes, so it's cached locally after first fetch.
         private Dictionary<string, List<(int Season, int Rank, int Rating)>> _history;
-        private bool _historyReady = false;
+        // Region+mode the loaded _history is for (e.g. "US", "EU_duo"). History is
+        // immutable reference data, so it's kept across matches and only re-loaded
+        // when this key changes — no per-match re-download of the (large) file.
+        private string _historyKey;
 
         private Mirror _mirror;
         private HttpClient _client;
@@ -246,7 +249,10 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            if (!_leaderBoardReady || !_streamersReady || !_historyReady)
+            // History is deliberately NOT gated on here: it's a large, best-effort
+            // download that only feeds the hover box, so it must never hold up the
+            // core MMR list. UpdateHover reads _history live once it finishes.
+            if (!_leaderBoardReady || !_streamersReady)
                 return;
 
             // Refresh names/hero-card ids whenever the leaderboard tiles are readable
@@ -280,7 +286,6 @@ namespace HDT_LobbyMMR
             _failToGetData = false;
             _leaderBoardReady = false;
             _streamersReady = false;
-            _historyReady = false;
             _nameErrors = 0;
             _hasRendered = false;
             _elimKey = null;
@@ -298,7 +303,8 @@ namespace HDT_LobbyMMR
             _elimSeq = 0;
             _leaderBoard = null;
             _streamers = null;
-            _history = null;
+            // _history is intentionally kept: it's immutable region+mode reference
+            // data, reloaded only when _historyKey changes (see FetchHistory).
             _mirror?.Clean();
         }
 
@@ -700,8 +706,7 @@ namespace HDT_LobbyMMR
         /// Best-effort fetch of the region's finished-season leaderboard history
         /// (see the scraped {region}_history.txt files). Failures are logged and
         /// swallowed — a missing hover tooltip is never worth failing the core MMR
-        /// feature over. Sets <see cref="_historyReady"/> regardless of outcome so
-        /// OnUpdate's gate can't wait forever on a source that's down.
+        /// feature over, and it never gates rendering.
         /// </summary>
         private async Task GetHistory()
         {
@@ -709,23 +714,40 @@ namespace HDT_LobbyMMR
             {
                 await FetchHistory();
             }
-            finally
+            catch (Exception ex)
             {
-                _historyReady = true;
+                FileLogger.Instance.Error("History load failed", ex);
             }
         }
 
         private async Task FetchHistory()
         {
             string region = GetRegionStr();
+            // Duo lobbies use the duo past-season board; solo uses the solo one.
+            string mode = !Core.Game.IsBattlegroundsSoloMatch ? "_duo" : "";
+            string key = $"{region}{mode}";
+
             // CN isn't part of the scraped past-season set (separate, season-bound
             // API), so there's no file to fetch — just render without tooltips.
             if (region == "UNKNOWN" || region == "CN")
+            {
+                _history = null;
+                _historyKey = key;
+                return;
+            }
+
+            // Already loaded for this region+mode — history is immutable, so skip
+            // the (large) re-download every match. Refreshes on region/mode change
+            // and on the next HDT restart, which is when new seasons would appear.
+            if (_history != null && _historyKey == key)
                 return;
 
-            // Duo lobbies use the duo past-season board; solo uses the solo one.
-            string mode = !Core.Game.IsBattlegroundsSoloMatch ? "_duo" : "";
-            string file = $"{region}{mode}_history.txt";
+            // Reloading for a new region/mode: drop stale data now so the hover
+            // never shows another region's history if this load fails.
+            _history = null;
+            _historyKey = key;
+
+            string file = $"{key}_history.txt";
             string url = $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{file}";
             string path = Path.Combine(Config.AppDataPath, "LobbyMMR", file);
             string response = null;
@@ -781,6 +803,7 @@ namespace HDT_LobbyMMR
                 else if (rating > seasons[i].Rating) seasons[i] = (season, rank, rating);
             }
             _history = history;
+            _historyKey = key;
             FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({file})");
         }
 
