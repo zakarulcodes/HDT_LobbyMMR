@@ -25,7 +25,7 @@ namespace HDT_LobbyMMR
         private MenuItem _showStreamerIconItem;
         private MenuItem _showRankItem;
 
-        public string Name => "HDT_LobbyMMR";
+        public string Name => "LobbyLens";
         public string Description => "Shows the MMR of every player in the Battlegrounds lobby, docked to the top or bottom of the Battlegrounds Session window.";
         public string Author => "Zakarul";
         public Version Version => new Version(1, 8, 0);
@@ -80,7 +80,7 @@ namespace HDT_LobbyMMR
             // hides the submenu, which is why the dock options were not showing.
             MenuItem = new MenuItem
             {
-                Header = "Lobby MMR"
+                Header = "LobbyLens"
             };
 
             // Mutually-exclusive dock-side options shown as a submenu.

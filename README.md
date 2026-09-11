@@ -1,4 +1,4 @@
-# HDT Lobby MMR
+# LobbyLens
 
 A small add-on for [Hearthstone Deck Tracker](https://github.com/HearthSim/Hearthstone-Deck-Tracker)
 that shows the **rank (MMR) of every player in your Battlegrounds lobby**. It sits
@@ -19,9 +19,11 @@ tracker.
 - Shows a colored **recent-form chip** (average finish over recent games, from
   [wallii.gg](https://www.wallii.gg/)) next to tracked players, green for strong through red for weak.
 - **Hover a player** to see, in a box beside their row, how many times you've been in a lobby
-  with them plus their **past-season ranks**: rank and MMR for each season they finished at 8000+,
-  newest first. Solo lobbies show solo history (seasons 6-18); duo lobbies show duo history
-  (seasons 12-18). Players with no matching history show `No history`.
+  with them, their **average MMR** across every ranked season in both modes (a quick read on how
+  good they are, even if their current lobby MMR is below the cutoff), plus their **past-season
+  ranks**: rank and MMR for each season they finished at 8000+, newest first. Solo lobbies show
+  solo history (seasons 6-18); duo lobbies show duo history (seasons 12-18). Players with no
+  matching history show `No history`.
 - **Click a player** with a recent-form chip to open a dossier: their recent games with
   per-game placements and rating change, plus an MMR trajectory sparkline, for the current
   mode (solo or duo).
@@ -48,13 +50,13 @@ in the game.
    %AppData%\HearthstoneDeckTracker\Plugins\
    ```
 4. Open Hearthstone Deck Tracker again, go to **Options → Tracker → Plugins**, and
-   turn on **Lobby MMR**.
+   turn on **LobbyLens**.
 
 ## Putting the list at the top or bottom
 
 You can choose where the list sits, and it remembers your choice:
 
-- Open the **Plugins → Lobby MMR** menu and pick **Dock to top** or **Dock to bottom**, **or**
+- Open the **Plugins → LobbyLens** menu and pick **Dock to top** or **Dock to bottom**, **or**
 - In **Options → Tracker → Plugins**, select the plugin and click the
   **Toggle dock: top / bottom** button.
 
@@ -67,7 +69,7 @@ when they're live right now, muted purple when offline. Live status and channels
 [wallii.gg](https://www.wallii.gg/), with the community-submitted list as a fallback, both
 updated automatically, so no plugin update is needed when someone new is added.
 
-If you don't want to see it (or the rank column), open the **Plugins → Lobby MMR** menu
+If you don't want to see it (or the rank column), open the **Plugins → LobbyLens** menu
 and untick **Show streamer icon** or **Show rank position** — each is independent and
 remembers your choice.
 

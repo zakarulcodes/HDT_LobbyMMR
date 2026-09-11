@@ -19,4 +19,4 @@ if (Get-Process -Name "HearthstoneDeckTracker" -ErrorAction SilentlyContinue) {
 New-Item -ItemType Directory -Force -Path $plugins | Out-Null
 Copy-Item $dll -Destination $plugins -Force
 Write-Host "Deployed to: $plugins" -ForegroundColor Green
-Write-Host "Start HDT, then enable it under Options - Tracker - Plugins (Lobby MMR)." -ForegroundColor Green
+Write-Host "Start HDT, then enable it under Options - Tracker - Plugins (LobbyLens)." -ForegroundColor Green

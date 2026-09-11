@@ -37,11 +37,15 @@ namespace HDT_LobbyMMR
         /// <summary>Lifetime count of lobbies shared with this player (incl. the current
         /// one), 0 if never tracked before — shown in the hover box.</summary>
         public int SeenCount;
+        /// <summary>Average season-end MMR across all ranked seasons in both modes,
+        /// 0 if this player never finished a season ranked — shown in the hover box
+        /// as a skill-at-a-glance figure.</summary>
+        public int AvgMmr;
 
         public PlayerRow(string name, string mmr, string rank, bool isSelf, bool isEliminated,
             string streamUrl = null, IReadOnlyList<string> history = null,
             double? avg = null, int walliiPlayerId = 0, string walliiRegion = null, bool isLive = false,
-            int seenCount = 0)
+            int seenCount = 0, int avgMmr = 0)
         {
             Name = name;
             Mmr = mmr;
@@ -55,6 +59,7 @@ namespace HDT_LobbyMMR
             WalliiRegion = walliiRegion;
             IsLive = isLive;
             SeenCount = seenCount;
+            AvgMmr = avgMmr;
         }
     }
 
@@ -107,8 +112,8 @@ namespace HDT_LobbyMMR
         // Rows that have history, with their pre-built tooltip lines. Rebuilt on
         // every ShowRows/ShowTeams; polled each tick by UpdateHover to drive the
         // manual hover box (WPF ToolTips don't fire in HDT's click-through overlay).
-        private readonly List<(FrameworkElement El, string Name, IReadOnlyList<string> Lines, int Seen)> _hoverRows =
-            new List<(FrameworkElement, string, IReadOnlyList<string>, int)>();
+        private readonly List<(FrameworkElement El, string Name, IReadOnlyList<string> Lines, int Seen, int AvgMmr)> _hoverRows =
+            new List<(FrameworkElement, string, IReadOnlyList<string>, int, int)>();
         private FrameworkElement _hoverEl;
 
         // Rows that have a wallii identity, for the click-to-open dossier. Rebuilt on
@@ -320,7 +325,7 @@ namespace HDT_LobbyMMR
             };
             // Register every row; a player with no matched history shows a
             // "No history" box rather than nothing, so hovering always responds.
-            _hoverRows.Add((border, row.Name, row.History, row.SeenCount));
+            _hoverRows.Add((border, row.Name, row.History, row.SeenCount, row.AvgMmr));
             // Only wallii-tracked players get a clickable dossier.
             if (row.WalliiPlayerId > 0)
                 _clickRows.Add((border, row.WalliiPlayerId, row.WalliiRegion, row.Name));
@@ -351,7 +356,7 @@ namespace HDT_LobbyMMR
                 return;
             }
 
-            foreach (var (el, name, lines, seen) in _hoverRows)
+            foreach (var (el, name, lines, seen, avgMmr) in _hoverRows)
             {
                 if (el.ActualWidth <= 0 || !el.IsVisible)
                     continue;
@@ -359,14 +364,14 @@ namespace HDT_LobbyMMR
                 Point br = el.PointToScreen(new Point(el.ActualWidth, el.ActualHeight));
                 if (p.X >= tl.X && p.X <= br.X && p.Y >= tl.Y && p.Y <= br.Y)
                 {
-                    ShowHoverFor(el, name, lines, seen);
+                    ShowHoverFor(el, name, lines, seen, avgMmr);
                     return;
                 }
             }
             HideHover();
         }
 
-        private void ShowHoverFor(FrameworkElement row, string name, IReadOnlyList<string> lines, int seen)
+        private void ShowHoverFor(FrameworkElement row, string name, IReadOnlyList<string> lines, int seen, int avgMmr)
         {
             if (ReferenceEquals(_hoverEl, row))
                 return; // already showing this row's box; nothing to rebuild
@@ -379,6 +384,16 @@ namespace HDT_LobbyMMR
                 FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 4)
             });
+            // Skill-at-a-glance: all-modes, all-seasons average of ranked finishes.
+            if (avgMmr > 0)
+                HoverLines.Children.Add(new TextBlock
+                {
+                    Text = $"Avg MMR (solos+duos): {avgMmr:N0}",
+                    Foreground = SelfBrush, // gold accent, so it reads first
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 4)
+                });
             HoverLines.Children.Add(new TextBlock
             {
                 Text = $"Past seasons - {name}",

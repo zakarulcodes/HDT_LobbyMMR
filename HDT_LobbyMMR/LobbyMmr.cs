@@ -76,6 +76,15 @@ namespace HDT_LobbyMMR
         // immutable reference data, so it's kept across matches and only re-loaded
         // when this key changes — no per-match re-download of the (large) file.
         private string _historyKey;
+        // Name -> average season-end MMR across ALL ranked seasons in BOTH modes
+        // (solo + duo), rounded. Feeds the hover box's skill-at-a-glance line. Built
+        // from both {region} and {region}_duo history files, region-scoped (mode-
+        // independent), so it survives solo/duo switches without a rebuild. Absent =
+        // never finished a season ranked (8000+).
+        // ponytail: pools solo and duo MMR though the scales differ — intentional; a
+        // strong duo player who barely touches solo should still read as skilled.
+        private Dictionary<string, int> _avgMmr;
+        private string _avgKey; // region the _avgMmr pool was built for (e.g. "US")
         // Name -> recent-form stats from wallii.gg (avg placement, player id for the
         // click dossier). Best-effort like _streamers/_history: a miss just means no
         // avg chip and no clickable dossier for that player. Fetched once names are
@@ -390,7 +399,8 @@ namespace HDT_LobbyMMR
                         surl,
                         LookupHistory(x.Name),
                         w?.Avg, w?.PlayerId ?? 0, w?.Region, live,
-                        SeenCount(x.Name));
+                        SeenCount(x.Name),
+                        LookupAvgMmr(x.Name));
                 })
                 .ToList();
 
@@ -434,7 +444,8 @@ namespace HDT_LobbyMMR
                             surl,
                             LookupHistory(m.Name),
                             w?.Avg, w?.PlayerId ?? 0, w?.Region, live,
-                            SeenCount(m.Name));
+                            SeenCount(m.Name),
+                            LookupAvgMmr(m.Name));
                     })
                     .ToList();
 
@@ -555,6 +566,11 @@ namespace HDT_LobbyMMR
                 .Select(s => $"S{s.Season}   #{s.Rank}   {s.Rating}")
                 .ToList();
         }
+
+        /// <summary>This player's average season-end MMR across all ranked seasons in
+        /// both modes, or 0 if they never finished a season ranked (8000+).</summary>
+        private int LookupAvgMmr(string name) =>
+            _avgMmr != null && _avgMmr.TryGetValue(name, out int avg) ? avg : 0;
 
         // ---- Times-seen counter (persisted across matches) -----------------
 
@@ -883,7 +899,18 @@ namespace HDT_LobbyMMR
             {
                 _history = null;
                 _historyKey = key;
+                _avgMmr = null;
+                _avgKey = region;
                 return;
+            }
+
+            // All-modes average is region-scoped (not mode-scoped), so build it once
+            // per region from both the solo and duo files. Skipped on a mode switch
+            // within the same region.
+            if (_avgKey != region)
+            {
+                await BuildAvgMmr(region);
+                _avgKey = region;
             }
 
             // Already loaded for this region+mode — history is immutable, so skip
@@ -897,6 +924,23 @@ namespace HDT_LobbyMMR
             _history = null;
             _historyKey = key;
 
+            string response = await FetchHistoryFile(key);
+            if (string.IsNullOrWhiteSpace(response))
+                return;
+
+            _history = ParseHistory(response);
+            _historyKey = key;
+            FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({key}_history.txt)");
+        }
+
+        /// <summary>
+        /// Download {key}_history.txt (e.g. "US" or "US_duo"), caching it locally.
+        /// Finished-season data never changes, so a local copy is as good as the
+        /// network one — fall back to the cache whenever the fetch comes up empty.
+        /// Returns null/empty on a total miss.
+        /// </summary>
+        private async Task<string> FetchHistoryFile(string key)
+        {
             string file = $"{key}_history.txt";
             string url = $"https://zakarulcodes.github.io/hdt-lobbymmr-leaderboard/{file}";
             string path = Path.Combine(Config.AppDataPath, "LobbyMMR", file);
@@ -924,19 +968,24 @@ namespace HDT_LobbyMMR
             }
             else if (File.Exists(path))
             {
-                // Finished-season data never changes, so a local copy is as good as
-                // the network one — fall back to it whenever the fetch comes up empty.
                 try { response = File.ReadAllText(path); }
                 catch (Exception ex) { FileLogger.Instance.Error("Failed to read cached history data", ex); }
             }
+            return response;
+        }
 
-            if (string.IsNullOrWhiteSpace(response))
-                return;
-
+        /// <summary>
+        /// Parse a history file (name TAB rank TAB rating TAB season) into per-player
+        /// season lists. Names carry no discriminator, so a common name (e.g. "jeef")
+        /// can match several accounts in one season — keep the top-rated entry per
+        /// season, matching how the live leaderboard resolves collisions (highest
+        /// wins), so each season shows one clean row.
+        /// </summary>
+        private static Dictionary<string, List<(int Season, int Rank, int Rating)>> ParseHistory(string response)
+        {
             var history = new Dictionary<string, List<(int Season, int Rank, int Rating)>>(StringComparer.OrdinalIgnoreCase);
             foreach (string line in response.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                // name<TAB>rank<TAB>rating<TAB>season
                 string[] tmp = line.TrimEnd('\r').Split('\t');
                 if (tmp.Length != 4) continue;
                 if (!int.TryParse(tmp[1], out int rank)) continue;
@@ -944,17 +993,39 @@ namespace HDT_LobbyMMR
                 if (!int.TryParse(tmp[3], out int season)) continue;
                 if (!history.TryGetValue(tmp[0], out var seasons))
                     history[tmp[0]] = seasons = new List<(int, int, int)>();
-                // Names carry no discriminator, so a common name (e.g. "jeef") can
-                // match several accounts in one season. Keep the top-rated entry per
-                // season, matching how the live leaderboard resolves name collisions
-                // (highest-ranked wins) — one clean row per season in the tooltip.
                 int i = seasons.FindIndex(e => e.Season == season);
                 if (i < 0) seasons.Add((season, rank, rating));
                 else if (rating > seasons[i].Rating) seasons[i] = (season, rank, rating);
             }
-            _history = history;
-            _historyKey = key;
-            FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({file})");
+            return history;
+        }
+
+        /// <summary>
+        /// Build the all-modes average-MMR pool for a region: mean of every ranked
+        /// season-end rating across both the solo and duo files. One value per
+        /// (mode, season) is pooled (ParseHistory already dedupes within a file), so
+        /// a player who finished ranked in both modes contributes both.
+        /// </summary>
+        private async Task BuildAvgMmr(string region)
+        {
+            var pool = new Dictionary<string, (long Sum, int Count)>(StringComparer.OrdinalIgnoreCase);
+            foreach (string key in new[] { region, $"{region}_duo" })
+            {
+                string resp = await FetchHistoryFile(key);
+                if (string.IsNullOrWhiteSpace(resp))
+                    continue;
+                foreach (var kv in ParseHistory(resp))
+                    foreach (var s in kv.Value)
+                    {
+                        pool.TryGetValue(kv.Key, out var acc);
+                        pool[kv.Key] = (acc.Sum + s.Rating, acc.Count + 1);
+                    }
+            }
+            _avgMmr = pool.ToDictionary(
+                kv => kv.Key,
+                kv => (int)Math.Round(kv.Value.Sum / (double)kv.Value.Count),
+                StringComparer.OrdinalIgnoreCase);
+            FileLogger.Instance.Info($"Built all-modes avg MMR for {_avgMmr.Count} players ({region})");
         }
 
         // ---- Recent-form (wallii.gg) fetch + click dossier ------------------
