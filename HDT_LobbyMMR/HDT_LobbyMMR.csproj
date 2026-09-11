@@ -11,7 +11,7 @@
     <Deterministic>true</Deterministic>
     <!-- Keep in sync with IPlugin.Version in LobbyMmrPlugin.cs so the built DLL
          self-identifies (HDT itself reads the version from IPlugin.Version). -->
-    <Version>1.7.1</Version>
+    <Version>1.8.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,6 +30,12 @@
     <!-- GameTag enum / card DB. HDT ships this DLL; reference for compile only. -->
     <Reference Include="HearthDb">
       <HintPath>Reference\HearthDb.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- JSON for the wallii.gg API. HDT ships Newtonsoft next to itself and loads it
+         into our AppDomain, so reference for compile only and do not ship a copy. -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>Reference\Newtonsoft.Json.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <!-- Needed for the C# 'dynamic' calls used when traversing game memory. -->

@@ -55,12 +55,30 @@
                     BorderThickness="1"
                     CornerRadius="2"
                     Padding="8,5"
-                    HorizontalAlignment="Left"
+                    HorizontalAlignment="Right"
                     VerticalAlignment="Top">
                 <Border.RenderTransform>
                     <TranslateTransform x:Name="HoverTranslate"/>
                 </Border.RenderTransform>
                 <StackPanel x:Name="HoverLines"/>
+            </Border>
+
+            <!-- Recent-games dossier (wallii.gg), opened by clicking a player row.
+                 Positioned under the clicked row in code. -->
+            <Border x:Name="DossierBox"
+                    Visibility="Collapsed"
+                    Width="200"
+                    Background="#1C2022"
+                    BorderBrush="#6E7275"
+                    BorderThickness="1"
+                    CornerRadius="2"
+                    Padding="8,6"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="DossierTranslate"/>
+                </Border.RenderTransform>
+                <StackPanel x:Name="DossierContent"/>
             </Border>
         </Grid>
     </Border>

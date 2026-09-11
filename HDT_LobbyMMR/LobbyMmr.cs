@@ -76,9 +76,23 @@ namespace HDT_LobbyMMR
         // immutable reference data, so it's kept across matches and only re-loaded
         // when this key changes — no per-match re-download of the (large) file.
         private string _historyKey;
+        // Name -> recent-form stats from wallii.gg (avg placement, player id for the
+        // click dossier). Best-effort like _streamers/_history: a miss just means no
+        // avg chip and no clickable dossier for that player. Fetched once names are
+        // known (the query is per-name), never gates the core list.
+        private Dictionary<string, WalliiStat> _walliiStats;
+        private bool _walliiRequested;
+        private string _gameMode; // wallii game_mode for this match: "0" solo, "1" duo
+        // "myname|region|mode|name" (case-folded) -> lifetime count of lobbies we've
+        // shared with that player, scoped to the logged-in account + region + mode.
+        // Persisted to Seen.txt so it survives restarts; loaded once and kept across
+        // matches. _seenRecorded gates the once-per-match increment.
+        private Dictionary<string, int> _seen;
+        private bool _seenRecorded;
 
         private Mirror _mirror;
         private HttpClient _client;
+        private Wallii _wallii;
         private LobbyMmrPanel _panel;
 
         public LobbyMmr()
@@ -87,7 +101,10 @@ namespace HDT_LobbyMMR
             _client.DefaultRequestHeaders.Add("User-Agent", "HDT_LobbyMMR");
             _client.Timeout = TimeSpan.FromSeconds(15);
             _mirror = new Mirror();
+            _wallii = new Wallii();
             _panel = new LobbyMmrPanel();
+            _panel.DossierRequested += OnDossierRequested;
+            Wallii.SelfTest(); // no-op in release builds
         }
 
         public void Clean()
@@ -96,6 +113,8 @@ namespace HDT_LobbyMMR
             ClearMemory();
             _client?.Dispose();
             _client = null;
+            _wallii?.Dispose();
+            _wallii = null;
             _mirror = null;
             _panel = null;
         }
@@ -263,11 +282,28 @@ namespace HDT_LobbyMMR
             if (_lobbyTeams == null)
                 return; // never captured yet — waiting on the initial hover
 
+            // Count this lobby once, as soon as the names are known, so the hover box
+            // can show how many times we've faced each player.
+            if (!_seenRecorded)
+            {
+                _seenRecorded = true;
+                RecordSeen();
+            }
+
+            // Recent-form stats need the lobby names, so they're fetched here (not at
+            // Reset) once names are known — best-effort, never gates rendering.
+            if (!_walliiRequested)
+            {
+                _walliiRequested = true;
+                _ = GetWallii();
+            }
+
             // Elimination is read passively from HDT's log-tracked entities each tick,
             // so players grey out live without hovering. Only rebuild the panel when the
             // eliminated set changes; _elimOrder only grows, so a count change = a new out.
+            // The wallii flag folds in so rows rebuild once the avg chips arrive.
             UpdateElimination();
-            string key = (_elimOrder?.Count ?? 0).ToString();
+            string key = $"{_elimOrder?.Count ?? 0}|{(_walliiStats == null ? 0 : 1)}";
             if (!_hasRendered || key != _elimKey)
             {
                 RenderRows();
@@ -275,8 +311,9 @@ namespace HDT_LobbyMMR
                 _elimKey = key;
             }
 
-            // Poll the cursor every tick to drive the manual history hover box
-            // (WPF ToolTips don't fire in HDT's click-through overlay).
+            // Poll the cursor every tick to drive the manual history hover box and the
+            // click-to-open dossier (WPF mouse events don't fire in HDT's click-through
+            // overlay, so both are done by polling the OS cursor / mouse button).
             _panel?.UpdateHover();
         }
 
@@ -303,6 +340,10 @@ namespace HDT_LobbyMMR
             _elimSeq = 0;
             _leaderBoard = null;
             _streamers = null;
+            _walliiStats = null;
+            _walliiRequested = false;
+            _seenRecorded = false;
+            // _seen is kept (persistent counter, like _history).
             // _history is intentionally kept: it's immutable region+mode reference
             // data, reloaded only when _historyKey changes (see FetchHistory).
             _mirror?.Clean();
@@ -337,13 +378,20 @@ namespace HDT_LobbyMMR
             var rows = withMmr
                 .OrderBy(x => IsElim(x.Name) ? 1 : 0)
                 .ThenByDescending(x => IsElim(x.Name) ? ElimOrd(x.Name) : x.Mmr)
-                .Select(x => new PlayerRow(
-                    x.Name, FormatMmr(x.Mmr, region),
-                    _showRank ? FormatRank(x.Rank) : "",
-                    x.IsSelf,
-                    IsElim(x.Name),
-                    _showStreamerIcon ? LookupStreamUrl(x.Name) : null,
-                    LookupHistory(x.Name)))
+                .Select(x =>
+                {
+                    WalliiStat w = LookupWallii(x.Name, x.Mmr);
+                    var (surl, live) = LookupStream(x.Name, w);
+                    return new PlayerRow(
+                        x.Name, FormatMmr(x.Mmr, region),
+                        _showRank ? FormatRank(x.Rank) : "",
+                        x.IsSelf,
+                        IsElim(x.Name),
+                        surl,
+                        LookupHistory(x.Name),
+                        w?.Avg, w?.PlayerId ?? 0, w?.Region, live,
+                        SeenCount(x.Name));
+                })
                 .ToList();
 
             _panel?.ShowRows(rows);
@@ -374,13 +422,20 @@ namespace HDT_LobbyMMR
                 int maxMmr = members.Count > 0 ? members[0].Mmr : 0;
                 bool hasSelf = members.Any(m => m.IsSelf);
                 var rows = members
-                    .Select(m => new PlayerRow(
-                        m.Name, FormatMmr(m.Mmr, region),
-                        _showRank ? FormatRank(m.Rank) : "",
-                        m.IsSelf,
-                        IsElim(m.Name),
-                        _showStreamerIcon ? LookupStreamUrl(m.Name) : null,
-                        LookupHistory(m.Name)))
+                    .Select(m =>
+                    {
+                        WalliiStat w = LookupWallii(m.Name, m.Mmr);
+                        var (surl, live) = LookupStream(m.Name, w);
+                        return new PlayerRow(
+                            m.Name, FormatMmr(m.Mmr, region),
+                            _showRank ? FormatRank(m.Rank) : "",
+                            m.IsSelf,
+                            IsElim(m.Name),
+                            surl,
+                            LookupHistory(m.Name),
+                            w?.Avg, w?.PlayerId ?? 0, w?.Region, live,
+                            SeenCount(m.Name));
+                    })
                     .ToList();
 
                 // A team is out once both teammates are eliminated; its ordinal is
@@ -468,8 +523,24 @@ namespace HDT_LobbyMMR
         private int ElimOrd(string name) =>
             _elimOrder != null && _elimOrder.TryGetValue(name, out int o) ? o : -1;
 
-        private string LookupStreamUrl(string name) =>
-            _streamers != null && _streamers.TryGetValue(name, out string url) ? url : null;
+        /// <summary>
+        /// Streamer channel URL + live status for a row, honoring the show-icon toggle.
+        /// wallii.gg is the primary source (bigger list, carries live status); our own
+        /// streamers.txt fills the gaps — names wallii misses, and unknown-region
+        /// lobbies where wallii isn't queried. Our source has no live signal (false).
+        /// A wallii stat dropped by the namesake guard also drops its stream URL (the
+        /// caller passes the guarded stat), so a wrong identity can't lend its channel.
+        /// </summary>
+        private (string Url, bool Live) LookupStream(string name, WalliiStat w)
+        {
+            if (!_showStreamerIcon)
+                return (null, false);
+            if (w?.StreamUrl != null)
+                return (w.StreamUrl, w.IsLive);
+            if (_streamers != null && _streamers.TryGetValue(name, out string url))
+                return (url, false);
+            return (null, false);
+        }
 
         /// <summary>
         /// This player's past-season ranks as preformatted tooltip lines, newest
@@ -483,6 +554,85 @@ namespace HDT_LobbyMMR
                 .OrderByDescending(s => s.Season)
                 .Select(s => $"S{s.Season}   #{s.Rank}   {s.Rating}")
                 .ToList();
+        }
+
+        // ---- Times-seen counter (persisted across matches) -----------------
+
+        private static string SeenPath() =>
+            Path.Combine(Config.AppDataPath, "LobbyMMR", "Seen.txt");
+
+        /// <summary>
+        /// Load the lifetime shared-lobby counts from Seen.txt ("name&lt;TAB&gt;count"
+        /// per line). Best-effort: a missing/corrupt file just starts counts fresh.
+        /// </summary>
+        private void LoadSeen()
+        {
+            _seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string path = SeenPath();
+                if (!File.Exists(path))
+                    return;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    int tab = line.LastIndexOf('\t');
+                    if (tab <= 0 || !int.TryParse(line.Substring(tab + 1), out int n))
+                        continue;
+                    _seen[line.Substring(0, tab)] = n;
+                }
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Warn($"Failed to load seen counts: {ex.Message}");
+            }
+        }
+
+        /// <summary>Account+region+mode prefix so counts are tracked separately per
+        /// logged-in account and leaderboard (e.g. "me|US|solo", "me|EU|duo"). Keyed
+        /// into the same Seen.txt.</summary>
+        private string SeenScope() =>
+            $"{_myName ?? "?"}|{GetRegionStr()}|{(Core.Game.IsBattlegroundsSoloMatch ? "solo" : "duo")}";
+
+        /// <summary>
+        /// Bump the shared-lobby count for every opponent in the current lobby (self
+        /// excluded) and persist. Counts are per region+mode. Called once per match
+        /// when the names resolve.
+        /// </summary>
+        private void RecordSeen()
+        {
+            if (_lobbyTeams == null)
+                return;
+            if (_seen == null)
+                LoadSeen();
+            string scope = SeenScope();
+            foreach (string name in _lobbyTeams.SelectMany(t => t)
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrEmpty(_myName) && name == _myName)
+                    continue;
+                string key = $"{scope}|{name}";
+                _seen.TryGetValue(key, out int n);
+                _seen[key] = n + 1;
+            }
+            try
+            {
+                string path = SeenPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllLines(path, _seen.Select(kv => $"{kv.Key}\t{kv.Value}"));
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Warn($"Failed to save seen counts: {ex.Message}");
+            }
+        }
+
+        private int SeenCount(string name)
+        {
+            if (_seen == null)
+                LoadSeen();
+            if (name == null)
+                return 0;
+            return _seen.TryGetValue($"{SeenScope()}|{name}", out int n) ? n : 0;
         }
 
         // ---- Leaderboard fetch (adapted from HDT_BGrank) --------------------
@@ -805,6 +955,86 @@ namespace HDT_LobbyMMR
             _history = history;
             _historyKey = key;
             FileLogger.Instance.Info($"Loaded history for {_history.Count} players ({file})");
+        }
+
+        // ---- Recent-form (wallii.gg) fetch + click dossier ------------------
+
+        /// <summary>
+        /// Best-effort fetch of recent-form stats for the current lobby. Needs the
+        /// lobby names (the query is per-name), so it runs once names are known.
+        /// Failures are logged and swallowed — a missing avg chip never fails the
+        /// core MMR feature, and this never gates rendering.
+        /// </summary>
+        private async Task GetWallii()
+        {
+            try
+            {
+                string region = Wallii.MapRegion(GetRegionStr());
+                if (region == null || _wallii == null)
+                    return; // unknown region (not yet resolved): wallii has no data
+                _gameMode = Core.Game.IsBattlegroundsSoloMatch ? "0" : "1";
+                var names = _lobbyTeams?
+                    .SelectMany(t => t)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (names == null || names.Count == 0)
+                    return;
+                _walliiStats = await _wallii.GetLobbyStatsAsync(names, region, _gameMode);
+                FileLogger.Instance.Debug($"Loaded wallii stats for {_walliiStats.Count}/{names.Count} lobby players");
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance.Error("wallii stats load failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// This player's wallii recent-form stat, or null when unknown or when it
+        /// almost certainly belongs to a namesake (wallii keys names case-folded, so
+        /// common names collide). Guard: the wallii identity's rating must sit within a
+        /// wide band of the rating we already resolved from the leaderboard.
+        /// </summary>
+        private WalliiStat LookupWallii(string name, int ourMmr)
+        {
+            if (_walliiStats == null || !_walliiStats.TryGetValue(name, out var stat))
+                return null;
+            // ponytail: fixed 1500-point band; MMRadar uses a freshness-scaled envelope.
+            // Only fires when both ratings are known — below-cutoff players (ourMmr 0)
+            // still get their wallii chip.
+            if (ourMmr > 0 && stat.Rating > 0 && Math.Abs(ourMmr - stat.Rating) > 1500)
+            {
+                FileLogger.Instance.Debug($"wallii stat for '{name}' dropped as suspected namesake " +
+                    $"(board {ourMmr} vs wallii {stat.Rating})");
+                return null;
+            }
+            return stat;
+        }
+
+        /// <summary>
+        /// A player row was clicked: show the loading box immediately, then fetch the
+        /// dossier off-thread and paint it back on the UI thread. Cross-thread work is
+        /// safe here because the fetch touches no UI and the paint is marshalled.
+        /// </summary>
+        private void OnDossierRequested(int playerId, string region, string name, FrameworkElement row)
+        {
+            var panel = _panel;
+            var wallii = _wallii;
+            string mode = _gameMode ?? "0";
+            if (panel == null || wallii == null)
+                return;
+            panel.ShowDossierLoading(name, row);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    WalliiDossier dossier = await wallii.GetDossierAsync(playerId, region, mode);
+                    _ = panel.Dispatcher.BeginInvoke((Action)(() => panel.ShowDossier(name, dossier, row)));
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Instance.Error("dossier fetch failed", ex);
+                }
+            });
         }
 
         private string GetRegionStr()
