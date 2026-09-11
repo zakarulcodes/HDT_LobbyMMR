@@ -42,13 +42,15 @@ in the game.
 
 ## Install
 
-1. Download the latest `HDT_LobbyMMR-vX.Y.Z.zip` from the
-   [Releases page](https://github.com/zakarulcodes/HDT_LobbyMMR/releases).
+1. Download the latest `LobbyLens-vX.Y.Z.zip` from the
+   [Releases page](https://github.com/zakarulcodes/LobbyLens/releases).
 2. Close Hearthstone Deck Tracker.
-3. Unzip it and put `HDT_LobbyMMR.dll` into this folder (create it if it isn't there):
+3. Unzip it and put `LobbyLens.dll` into this folder (create it if it isn't there):
    ```
    %AppData%\HearthstoneDeckTracker\Plugins\
    ```
+   If you're upgrading from an older version, delete the old `HDT_LobbyMMR.dll`
+   from that folder first, otherwise HDT loads both and you'll see two panels.
 4. Open Hearthstone Deck Tracker again, go to **Options → Tracker → Plugins**, and
    turn on **LobbyLens**.
 

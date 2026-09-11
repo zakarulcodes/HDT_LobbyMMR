@@ -5,13 +5,13 @@
     <UseWPF>true</UseWPF>
     <LangVersion>8.0</LangVersion>
     <RootNamespace>HDT_LobbyMMR</RootNamespace>
-    <AssemblyName>HDT_LobbyMMR</AssemblyName>
+    <AssemblyName>LobbyLens</AssemblyName>
     <!-- We manage references explicitly; keep build output clean. -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Deterministic>true</Deterministic>
     <!-- Keep in sync with IPlugin.Version in LobbyMmrPlugin.cs so the built DLL
          self-identifies (HDT itself reads the version from IPlugin.Version). -->
-    <Version>1.8.0</Version>
+    <Version>2.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

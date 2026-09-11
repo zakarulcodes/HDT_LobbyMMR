@@ -1,10 +1,10 @@
-# Builds HDT_LobbyMMR and copies it into the HDT plugins folder.
+# Builds LobbyLens and copies it into the HDT plugins folder.
 # Usage:  powershell -File deploy.ps1
 $ErrorActionPreference = "Stop"
 
 $proj    = Join-Path $PSScriptRoot "HDT_LobbyMMR.csproj"
-$dll     = Join-Path $PSScriptRoot "bin\Release\HDT_LobbyMMR.dll"
-$plugins = Join-Path $env:APPDATA "HearthstoneDeckTracker\Plugins\HDT_LobbyMMR"
+$dll     = Join-Path $PSScriptRoot "bin\Release\LobbyLens.dll"
+$plugins = Join-Path $env:APPDATA "HearthstoneDeckTracker\Plugins\LobbyLens"
 
 Write-Host "Building (Release)..." -ForegroundColor Cyan
 dotnet build $proj -c Release -nologo -v q
